@@ -194,7 +194,7 @@
   .hue-dot.active{box-shadow:0 0 0 3px var(--accent)}
   @media(max-width:520px){.avatar-picker{flex-direction:column;align-items:flex-start}}
 
-  /* ログイン画面（AUTH_PLAN 4章）。登録リンクは無い */
+  /* ログイン・新規登録画面 */
   .login{max-width:420px}
   .login-head{display:flex;flex-direction:column;align-items:center;text-align:center;gap:6px;margin-bottom:24px}
   .login-head h1{margin:6px 0 0}
@@ -202,3 +202,7 @@
   .login-card{display:flex;flex-direction:column}
   .login-card .setup-block:last-of-type{margin-bottom:16px}
   .login-error{margin:0 0 16px;font-size:13px;font-weight:600;color:var(--danger)}
+  .login-title{margin:0 0 20px;font-size:20px;text-align:center}
+  .login-hint{margin:6px 0 0;color:var(--muted);font-size:13px}
+  .login-notice{margin:0 0 16px;font-size:14px;line-height:1.7}
+  .login-switch{margin-top:12px}

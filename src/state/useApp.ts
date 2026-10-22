@@ -142,6 +142,7 @@ export function useApp() {
     user: auth.user,
     ready: auth.ready,
     signIn: auth.signIn,
+    signUp: auth.signUp,
     signOut,
     state: goal.state,
     goals: goal.goals,

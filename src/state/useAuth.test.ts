@@ -10,6 +10,7 @@ const authApi = vi.hoisted(() => ({
   getSession: vi.fn(),
   onAuthStateChange: vi.fn(),
   signInWithPassword: vi.fn(),
+  signUp: vi.fn(),
   signOut: vi.fn(),
   updateUser: vi.fn(),
 }))
@@ -82,6 +83,64 @@ describe('account tutorial completion', () => {
     expect(auth.ready).toBe(true)
     expect(auth.tutorialCompleted).toBe(completed)
     expect(authApi.updateUser).not.toHaveBeenCalled()
+  })
+
+  it('keeps an account awaiting email confirmation signed out', async () => {
+    restoredUser = null
+    authApi.signUp.mockResolvedValue({ data: { user: user(), session: null }, error: null })
+    await render()
+    await expect(auth.signUp('new@example.com', 'new-password')).resolves.toEqual({ status: 'confirmation-required' })
+    expect(authApi.signUp).toHaveBeenCalledExactlyOnceWith({ email: 'new@example.com', password: 'new-password' })
+    expect(auth.user).toBeNull()
+    expect(auth.tutorialCompleted).toBe(false)
+  })
+
+  it('uses the auth event for a registration with an immediate session', async () => {
+    restoredUser = null
+    const newUser = user('new-account')
+    authApi.signUp.mockResolvedValue({ data: { user: newUser, session: { user: newUser } }, error: null })
+    await render()
+    await expect(auth.signUp('new@example.com', 'new-password')).resolves.toEqual({ status: 'signed-in' })
+    await act(async () => { onAuthChange('SIGNED_IN', { user: newUser }) })
+    expect(auth.user?.id).toBe('new-account')
+    expect(auth.tutorialCompleted).toBe(false)
+    expect(authApi.updateUser).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    ['signup_disabled', '新規登録を受け付けていません'],
+    ['email_provider_disabled', '新規登録を受け付けていません'],
+    ['over_email_send_rate_limit', '送信回数の上限'],
+    ['over_request_rate_limit', '送信回数の上限'],
+    ['weak_password', '推測されにくい'],
+    ['email_address_invalid', '有効なメールアドレス'],
+    ['user_already_exists', '登録を完了できませんでした'],
+    ['unexpected_failure', '登録を完了できませんでした'],
+  ])('handles registration error %s without authenticating', async (code, message) => {
+    restoredUser = null
+    authApi.signUp.mockResolvedValue({ data: { user: null, session: null }, error: { code, message: 'internal details' } })
+    await render()
+    expect(await auth.signUp('new@example.com', 'new-password')).toEqual({
+      status: 'error', message: expect.stringContaining(message),
+    })
+    expect(auth.user).toBeNull()
+  })
+
+  it('allows registration to be retried after a connection failure', async () => {
+    restoredUser = null
+    authApi.signUp.mockRejectedValueOnce(new Error('offline'))
+      .mockResolvedValueOnce({ data: { user: user(), session: null }, error: null })
+    await render()
+    expect(await auth.signUp('new@example.com', 'new-password')).toEqual({
+      status: 'error', message: expect.stringContaining('通信できませんでした'),
+    })
+    await expect(auth.signUp('new@example.com', 'new-password')).resolves.toEqual({ status: 'confirmation-required' })
+  })
+
+  it('explains that email confirmation is needed before signing in', async () => {
+    authApi.signInWithPassword.mockResolvedValue({ error: { code: 'email_not_confirmed' } })
+    await render()
+    await expect(auth.signIn('new@example.com', 'new-password')).resolves.toContain('確認メールのリンク')
   })
 
   it.each([true, false])('reads tutorial completion %s from the signed-in account', async (completed) => {

@@ -9,11 +9,16 @@ import { supabase } from '../lib/supabase'
  * JWT は `supabase.from(...)` に自動で付く。
  * 初回案内の完了は Auth の user_metadata に保存し、別端末でのログインにも引き継ぐ。
  *
- * 登録画面は無い。アカウントは管理画面で配る。
+ * 新規登録も Supabase Auth に任せ、セッションができるまでは未ログインのままにする。
  */
 
 /** 何が違うかは言わない。アドレスの存在を当てられるため（AUTH_PLAN 4章） */
 const SIGN_IN_ERROR = 'メールアドレスかパスワードが違います'
+
+export type SignUpResult =
+  | { status: 'signed-in' }
+  | { status: 'confirmation-required' }
+  | { status: 'error'; message: string }
 
 export function useAuth() {
   const [user, setUser] = useState<User | null>(null)
@@ -54,9 +59,36 @@ export function useAuth() {
   const signIn = useCallback(async (email: string, password: string) => {
     const { error } = await supabase.auth.signInWithPassword({ email, password })
     if (!error) return null
+    if (error.code === 'email_not_confirmed') {
+      return '確認メールのリンクを開いてから、ログインしてください。'
+    }
     return error.message === 'Invalid login credentials'
       ? SIGN_IN_ERROR
       : `ログインできませんでした（${error.message}）`
+  }, [])
+
+  const signUp = useCallback(async (email: string, password: string): Promise<SignUpResult> => {
+    try {
+      const { data, error } = await supabase.auth.signUp({ email, password })
+      if (error) {
+        let message = '登録を完了できませんでした。入力内容を確認するか、ログインをお試しください。'
+        if (error.code === 'signup_disabled' || error.code === 'email_provider_disabled') {
+          message = '現在、新規登録を受け付けていません。時間をおいてお試しください。'
+        } else if (error.code === 'over_email_send_rate_limit' || error.code === 'over_request_rate_limit') {
+          message = '送信回数の上限に達しました。時間をおいて、もう一度お試しください。'
+        } else if (error.code === 'weak_password') {
+          message = 'このパスワードは使用できません。より長く、推測されにくいパスワードを設定してください。'
+        } else if (error.code === 'email_address_invalid') {
+          message = '有効なメールアドレスを入力してください。'
+        }
+        return { status: 'error', message }
+      }
+      // 確認メール待ちの user をログイン済みとして扱わない。
+      // セッションがある場合は onAuthStateChange が通常の初回案内へ進める。
+      return { status: data.session ? 'signed-in' : 'confirmation-required' }
+    } catch {
+      return { status: 'error', message: '通信できませんでした。接続を確認して、もう一度お試しください。' }
+    }
   }, [])
 
   const signOut = useCallback(async () => {
@@ -95,5 +127,5 @@ export function useAuth() {
     return request.promise
   }, [user, tutorialCompleted])
 
-  return { user, ready, signIn, signOut, tutorialCompleted, completeTutorial }
+  return { user, ready, signIn, signUp, signOut, tutorialCompleted, completeTutorial }
 }

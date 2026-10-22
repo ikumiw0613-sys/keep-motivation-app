@@ -10,7 +10,7 @@
 --
 -- 持ち主は `auth.users`（Supabase Auth）。public に users テーブルは置かない。
 -- パスワードのハッシュは auth.users.encrypted_password にあり、照合は Supabase 内で完結する。
--- アカウントは管理画面の Authentication → Users で手作業で配る（登録画面は無い）。
+-- アカウントはアプリの新規登録画面から Supabase Auth の signUp で作成する。
 
 -- **目標は同時に何本あってもいい。** 現役を示す列は置かない。
 -- 目標ごとにアバター（avatars）と記録（records）がぶら下がるので、行が並んでいれば

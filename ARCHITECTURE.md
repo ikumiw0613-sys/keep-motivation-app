@@ -75,7 +75,7 @@ src/
 │   └── AccountBar.tsx            メールアドレス・ログアウト
 │
 ├── pages/                      画面（1画面 = 1ファイル）
-│   ├── LoginPage.tsx             ログイン（メールアドレス＋パスワード）
+│   ├── LoginPage.tsx             ログイン・新規登録（メールアドレス＋パスワード）
 │   ├── TopPage.tsx               トップ
 │   ├── GoalsList.tsx             目標一覧（どの目標を開くか選ぶ）
 │   ├── SetupPage.tsx             目標設定（新しい目標を作る。メニューには出さない）
@@ -173,8 +173,8 @@ flowchart TB
     useapp --> usescreen
     useapp --> usetimer
     useapp -->|"user.id（uuid）を渡す"| usegoal
-    login -->|"signIn(email, password)"| useapp
-    useauth -->|"signInWithPassword /<br/>onAuthStateChange"| client
+    login -->|"signIn / signUp"| useapp
+    useauth -->|"signInWithPassword / signUp /<br/>onAuthStateChange"| client
     usetimer -->|"SESSION 秒たったら onComplete()"| usegoal
     usetimer -->|"SESSION を参照"| logic
     usegoal -->|"markSessionDone() / resetGoal()"| logic
@@ -303,8 +303,11 @@ flowchart LR
 テーブルやカラムの追加は不要で、完了フラグは画面遷移にだけ使います。保存に失敗した場合は案内に留まり、再試行できます。
 過去または現在の目標がある既存アカウントは、完了フラグがなくても案内済みとして扱います。
 
-**登録画面はありません。** アカウントは Supabase の管理画面 Authentication → Users で手作業で配ります
-（新規登録も管理画面で無効にしてあります）。
+**ログイン画面から新規登録できます。** `useAuth.signUp` が Supabase Auth の `signUp` を呼びます。
+パスワードは8文字以上・確認入力との一致を画面で検証し、認証サービス側でも検証します。
+メール確認が有効な場合は確認メールの案内を表示し、セッションができるまでは未ログインとして扱います。
+確認不要の場合は Auth のイベントでログインし、既存の初回案内へ進みます。
+Supabase 側では Email と新規登録の有効化が必要です。メールの戻り先は Site URL を設定します。
 
 ### `goals` — 目標
 
@@ -432,8 +435,7 @@ JWT は `supabase.from(...)` に自動で付くので、アプリ側に `Authori
 
 **データまわり**
 
-- **アカウントは管理画面で手作業で配ります。** 登録画面もパスワード再発行の導線もありません
-  （3人で使う前提。詳細は [`AUTH_PLAN.md`](./AUTH_PLAN.md)）
+- パスワード再発行の導線はありません。
 - **ペース（`cycle_days`）はあとから変えられません。** 変えると過去の記録の所属サイクルが
   変わるため、「過去を切り直さずに変える」には変更履歴のテーブルが要ります。いまは
   「変えたいなら新しい目標＝たまごから」。**1日に1回にした人の逃げ道が作り直しだけ**なのが
