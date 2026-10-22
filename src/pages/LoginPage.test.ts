@@ -10,16 +10,18 @@ let root: Root
 let container: HTMLDivElement
 const signIn = vi.fn<(email: string, password: string) => Promise<string | null>>()
 const signUp = vi.fn<(email: string, password: string) => Promise<SignUpResult>>()
+const googleSignIn = vi.fn<() => Promise<string | null>>()
 
 beforeEach(async () => {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true)
   vi.resetAllMocks()
   signIn.mockResolvedValue(null)
   signUp.mockResolvedValue({ status: 'confirmation-required' })
+  googleSignIn.mockResolvedValue(null)
   container = document.createElement('div')
   document.body.append(container)
   root = createRoot(container)
-  await act(async () => root.render(createElement(LoginPage, { onSignIn: signIn, onSignUp: signUp })))
+  await act(async () => root.render(createElement(LoginPage, { onSignIn: signIn, onSignUp: signUp, onSignInWithGoogle: googleSignIn })))
 })
 
 afterEach(async () => {
@@ -30,6 +32,10 @@ afterEach(async () => {
 
 async function switchMode() {
   await act(async () => container.querySelector<HTMLButtonElement>('.login-switch')!.click())
+}
+
+async function clickGoogle() {
+  await act(async () => container.querySelector<HTMLButtonElement>('.google-sign-in')!.click())
 }
 
 async function fill(id: string, value: string) {
@@ -55,6 +61,52 @@ it('keeps existing short passwords usable for login', async () => {
   await submit()
   expect(signIn).toHaveBeenCalledExactlyOnceWith('new@example.com', 'short')
   expect(signUp).not.toHaveBeenCalled()
+})
+
+it.each([false, true])('starts Google login without requiring email credentials (registering = %s)', async (registering) => {
+  if (registering) await switchMode()
+  expect(container.querySelector<HTMLButtonElement>('button[type="submit"]')!.disabled).toBe(true)
+  await clickGoogle()
+  expect(googleSignIn).toHaveBeenCalledOnce()
+  expect(signIn).not.toHaveBeenCalled()
+  expect(signUp).not.toHaveBeenCalled()
+  expect(container.querySelector('[role="alert"]')).toBeNull()
+})
+
+it('blocks Google, email, and mode changes while Google login is pending', async () => {
+  let resolve!: (message: string | null) => void
+  googleSignIn.mockReturnValue(new Promise((done) => { resolve = done }))
+  await credentials()
+  await clickGoogle()
+  await clickGoogle()
+  await submit()
+  await switchMode()
+  expect(googleSignIn).toHaveBeenCalledOnce()
+  expect(signIn).not.toHaveBeenCalled()
+  expect(container.querySelector('h2')?.textContent).toBe('ログイン')
+  expect(container.querySelector('.google-sign-in')?.textContent).toContain('Googleへ移動中...')
+  expect(Array.from(container.querySelectorAll('input, button')).every((element) => (element as HTMLInputElement).disabled)).toBe(true)
+  await act(async () => resolve('Googleでログインできませんでした'))
+  expect(container.querySelector<HTMLButtonElement>('.google-sign-in')!.disabled).toBe(false)
+})
+
+it.each(['api', 'network'])('allows retrying Google login after a %s error', async (failure) => {
+  if (failure === 'api') googleSignIn.mockResolvedValueOnce('Googleでログインできませんでした')
+  else googleSignIn.mockRejectedValueOnce(new Error('offline'))
+  await clickGoogle()
+  expect(container.querySelector('[role="alert"]')?.textContent).toContain(failure === 'api' ? 'Googleでログインできませんでした' : '通信できませんでした')
+  await clickGoogle()
+  expect(googleSignIn).toHaveBeenCalledTimes(2)
+  expect(container.querySelector('[role="alert"]')).toBeNull()
+})
+
+it('shows a failed OAuth callback on the login screen', async () => {
+  await act(async () => root.render(createElement(LoginPage, {
+    onSignIn: signIn, onSignUp: signUp, onSignInWithGoogle: googleSignIn,
+    authError: 'ログインを完了できませんでした。もう一度お試しください。',
+  })))
+  expect(container.querySelector('[role="alert"]')?.textContent).toContain('ログインを完了できませんでした')
+  expect(container.querySelector<HTMLButtonElement>('.google-sign-in')!.disabled).toBe(false)
 })
 
 it('switches modes while keeping the email and clearing passwords and errors', async () => {
