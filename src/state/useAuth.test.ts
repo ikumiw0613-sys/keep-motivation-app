@@ -7,9 +7,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { useAuth } from './useAuth'
 
 const authApi = vi.hoisted(() => ({
+  initialize: vi.fn(),
   getSession: vi.fn(),
   onAuthStateChange: vi.fn(),
   signInWithPassword: vi.fn(),
+  signInWithOAuth: vi.fn(),
   signUp: vi.fn(),
   signOut: vi.fn(),
   updateUser: vi.fn(),
@@ -52,6 +54,8 @@ describe('account tutorial completion', () => {
     vi.spyOn(window, 'alert').mockImplementation(() => {})
     vi.spyOn(console, 'error').mockImplementation(() => {})
     restoredUser = user()
+    window.history.replaceState(null, '', '/')
+    authApi.initialize.mockResolvedValue({ error: null })
     authApi.getSession.mockImplementation(async () => ({
       data: { session: restoredUser ? { user: restoredUser } : null },
     }))
@@ -63,6 +67,7 @@ describe('account tutorial completion', () => {
       data: { user: user('account-a', { tutorial_completed: true }) }, error: null,
     })
     authApi.signInWithPassword.mockResolvedValue({ error: null })
+    authApi.signInWithOAuth.mockResolvedValue({ data: { provider: 'google', url: 'https://accounts.google.com/' }, error: null })
     authApi.signOut.mockResolvedValue({ error: null })
     container = document.createElement('div')
     document.body.append(container)
@@ -73,6 +78,7 @@ describe('account tutorial completion', () => {
     await act(async () => { root.unmount() })
     expect(unsubscribe).toHaveBeenCalledOnce()
     container.remove()
+    window.history.replaceState(null, '', '/')
     vi.restoreAllMocks()
     vi.unstubAllGlobals()
   })
@@ -93,6 +99,60 @@ describe('account tutorial completion', () => {
     expect(authApi.signUp).toHaveBeenCalledExactlyOnceWith({ email: 'new@example.com', password: 'new-password' })
     expect(auth.user).toBeNull()
     expect(auth.tutorialCompleted).toBe(false)
+  })
+
+  it('starts Google login with a return URL on this app, without carrying URL parameters', async () => {
+    restoredUser = null
+    window.history.replaceState(null, '', '/app/?next=https://example.org/#old-callback')
+    await render()
+    await act(async () => { expect(await auth.signInWithGoogle()).toBeNull() })
+    expect(authApi.signInWithOAuth).toHaveBeenCalledExactlyOnceWith({
+      provider: 'google', options: { redirectTo: `${window.location.origin}/app/` },
+    })
+    expect(auth.user).toBeNull()
+    expect(authApi.signInWithPassword).not.toHaveBeenCalled()
+  })
+
+  it.each(['api', 'network'])('handles Google %s errors and allows a retry', async (failure) => {
+    restoredUser = null
+    if (failure === 'api') authApi.signInWithOAuth.mockResolvedValueOnce({ error: { message: 'internal configuration details' } })
+    else authApi.signInWithOAuth.mockRejectedValueOnce(new Error('offline'))
+    await render()
+    await act(async () => {
+      expect(await auth.signInWithGoogle()).toContain(failure === 'api' ? 'Googleでログインできませんでした' : '通信できませんでした')
+    })
+    expect(auth.user).toBeNull()
+    await act(async () => { expect(await auth.signInWithGoogle()).toBeNull() })
+    expect(authApi.signInWithOAuth).toHaveBeenCalledTimes(2)
+  })
+
+  it('shows a callback error and clears it when Google login is retried', async () => {
+    restoredUser = null
+    authApi.initialize.mockResolvedValue({ error: { message: 'access_denied' } })
+    await render()
+    expect(auth.ready).toBe(true)
+    expect(auth.user).toBeNull()
+    expect(auth.authError).toContain('ログインを完了できませんでした')
+    await act(async () => { await auth.signInWithGoogle() })
+    expect(auth.authError).toBeNull()
+  })
+
+  it.each(['initialize', 'getSession'])('leaves the loading screen after %s rejects', async (method) => {
+    restoredUser = null
+    authApi[method as 'initialize' | 'getSession'].mockRejectedValue(new Error('offline'))
+    await render()
+    expect(auth.ready).toBe(true)
+    expect(auth.user).toBeNull()
+    expect(auth.authError).toContain('通信できませんでした')
+  })
+
+  it('reads a Google session returned by the SDK and restores existing account metadata', async () => {
+    restoredUser = user('existing-account', { tutorial_completed: true })
+    await render()
+    expect(auth.user?.id).toBe('existing-account')
+    expect(auth.tutorialCompleted).toBe(true)
+    expect(auth.authError).toBeNull()
+    expect(authApi.signUp).not.toHaveBeenCalled()
   })
 
   it('uses the auth event for a registration with an immediate session', async () => {

@@ -75,7 +75,7 @@ src/
 │   └── AccountBar.tsx            メールアドレス・ログアウト
 │
 ├── pages/                      画面（1画面 = 1ファイル）
-│   ├── LoginPage.tsx             ログイン・新規登録（メールアドレス＋パスワード）
+│   ├── LoginPage.tsx             Googleログイン・メールでのログインと新規登録
 │   ├── TopPage.tsx               トップ
 │   ├── GoalsList.tsx             目標一覧（どの目標を開くか選ぶ）
 │   ├── SetupPage.tsx             目標設定（新しい目標を作る。メニューには出さない）
@@ -173,8 +173,8 @@ flowchart TB
     useapp --> usescreen
     useapp --> usetimer
     useapp -->|"user.id（uuid）を渡す"| usegoal
-    login -->|"signIn / signUp"| useapp
-    useauth -->|"signInWithPassword / signUp /<br/>onAuthStateChange"| client
+    login -->|"signIn / signUp / signInWithGoogle"| useapp
+    useauth -->|"signInWithPassword / signUp /<br/>signInWithOAuth / onAuthStateChange"| client
     usetimer -->|"SESSION 秒たったら onComplete()"| usegoal
     usetimer -->|"SESSION を参照"| logic
     usegoal -->|"markSessionDone() / resetGoal()"| logic
@@ -212,8 +212,8 @@ flowchart TB
 - **`logic.ts` は UI を持たない純粋なルール**（サイクルの数え方、気分の表、日付計算）。
   4つの hook はここの定数・関数を呼ぶだけで、ロジックそのものは持ちません
 - **`useAuth.ts` は DB を知らず、`useGoalState.ts` は誰がログインしているかを知りません。**
-  間をつなぐのは `useApp.ts` が渡す uuid 1つだけです。第2段階で Google ログインに変えるとき、
-  差し替わるのは `useAuth.ts` の `signIn` と `LoginPage.tsx` の入力欄だけで済みます
+  間をつなぐのは `useApp.ts` が渡す uuid 1つだけです。Googleログインもメール認証も
+  `useAuth.ts` に置き、同じセッションと既存の画面遷移・DB読み込みを使います
 - **`avatar/` の見た目は3Dの一種類だけ**です。WebGL が使えない／初期化に失敗した場合は、
   レイアウトを保つための空枠だけが残ります（`Avatar.tsx` の `WebGLBoundary`）
 - **`features/calendar/`** は機能ひとまとまりの置き場。機能が増えたら `features/` にフォルダを足します
@@ -308,6 +308,14 @@ flowchart LR
 メール確認が有効な場合は確認メールの案内を表示し、セッションができるまでは未ログインとして扱います。
 確認不要の場合は Auth のイベントでログインし、既存の初回案内へ進みます。
 Supabase 側では Email と新規登録の有効化が必要です。メールの戻り先は Site URL を設定します。
+
+**Googleログインも利用できます。** `useAuth.signInWithGoogle` が
+`signInWithOAuth({ provider: 'google', options: { redirectTo } })` を呼びます。
+戻り先は現在のオリジン＋パスとし、クエリとハッシュを持ち越しません。
+現在のSPAではSupabase SDK既定のimplicitフローで戻り先URLからセッションを取得します。
+`initialize()` のエラーも取得し、認証をキャンセルした場合や戻りで失敗した場合は再試行を案内します。
+Client SecretはSupabase側で管理し、フロントエンドには置きません。
+Googleプロバイダと戻り先の設定手順は [README](./README.md#アカウントを作成ログインする) にあります。
 
 ### `goals` — 目標
 

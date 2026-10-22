@@ -141,8 +141,10 @@ export function useApp() {
   return {
     user: auth.user,
     ready: auth.ready,
+    authError: auth.authError,
     signIn: auth.signIn,
     signUp: auth.signUp,
+    signInWithGoogle: auth.signInWithGoogle,
     signOut,
     state: goal.state,
     goals: goal.goals,

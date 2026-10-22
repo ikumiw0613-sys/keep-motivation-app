@@ -12,7 +12,7 @@ const DebugPage = import.meta.env.DEV
 
 export default function App() {
   const [tutorialUserId, setTutorialUserId] = useState<string | null>(null)
-  const { user, ready, signIn, signUp, signOut, state, goals, currentGoalId, selectGoal, setDayOffset, reload, loaded, loadError, retryLoad, hasStarted, completeTutorial, screen, start, extendDeadline, markStageSeen, newGoal, cancelNewGoal, editGoal, saveGoal, cancelEdit, session, elapsed, running, reached, toggleTimer, finishTimer, recordOnly } = useApp()
+  const { user, ready, authError, signIn, signUp, signInWithGoogle, signOut, state, goals, currentGoalId, selectGoal, setDayOffset, reload, loaded, loadError, retryLoad, hasStarted, completeTutorial, screen, start, extendDeadline, markStageSeen, newGoal, cancelNewGoal, editGoal, saveGoal, cancelEdit, session, elapsed, running, reached, toggleTimer, finishTimer, recordOnly } = useApp()
 
   // ゲートは3段。セッションの確認 → ログイン → 目標の読み込み（AUTH_PLAN 4章）
   if (!ready) {
@@ -20,7 +20,7 @@ export default function App() {
   }
 
   if (!user) {
-    return <LoginPage onSignIn={signIn} onSignUp={signUp} />
+    return <LoginPage onSignIn={signIn} onSignUp={signUp} onSignInWithGoogle={signInWithGoogle} authError={authError} />
   }
 
   if (loadError) {

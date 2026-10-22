@@ -47,3 +47,16 @@
 .onboarding-next { display:flex; justify-content:center; align-items:center; gap:10px; width:100%; min-height:48px; border:1px solid #39c8c1; border-radius:28px; background:linear-gradient(120deg,#32b9bb,#359a9f); color:white; font-weight:650 !important; box-shadow:inset 0 2px 3px #ffffff40; }
 .onboarding-next:hover { filter:brightness(1.06); }
 @media(max-width:480px) { .onboarding-heading { margin-top:23px; } .onboarding-scene-final { min-height:245px; } }
+
+/* アカウントバーを除いた高さに収め、背の低い画面では縦にスクロールさせる。 */
+.content .onboarding-page { min-width:0; min-height:100%; flex:1 0 auto; }
+.content .onboarding-card { min-width:0; min-height:100%; }
+.onboarding-navigation, .onboarding-next { flex-shrink:0; }
+.onboarding-evolution > div { min-width:0; overflow-wrap:anywhere; }
+@media(max-width:520px) {
+  .onboarding-card { padding:20px 16px max(24px,env(safe-area-inset-bottom)); }
+  .onboarding-navigation { gap:12px; }
+  .onboarding-skip { min-height:44px; }
+  .onboarding-heading { margin:20px 0 24px; }
+  .onboarding-body { flex-shrink:0; }
+}

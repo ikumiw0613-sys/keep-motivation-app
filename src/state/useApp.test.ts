@@ -19,9 +19,12 @@ function fixtures() {
   const auth = {
     user: user('account-a') as User | null,
     ready: true,
+    authError: null,
     tutorialCompleted: false,
     completeTutorial: vi.fn(async () => true),
     signIn: vi.fn(),
+    signInWithGoogle: vi.fn(),
+    signUp: vi.fn(),
     signOut: vi.fn(async () => {}),
   }
   const goal = {

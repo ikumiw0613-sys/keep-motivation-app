@@ -1,6 +1,8 @@
 .dashboard-shell{background:radial-gradient(ellipse at 70% 15%,#f6fafc,transparent 65%),#edf3f7;}
 .dashboard-shell .content .dashboard{width:100%;max-width:1536px;padding:14px 3.3% 14px;--accent:#518d94;--accent-soft:#edf5f2;--muted:#6b7b93;--ink:#101b2d;color:var(--ink)}
 .dash-area{position:relative}
+/* 振り返り画面でも、閉じたパネルが横スクロールを作らないようにする。 */
+.dashboard:not(.dash-full) .dash-area{overflow:clip}
 
 /* 部屋の背景を画面いっぱいに敷く。上のアカウントバーの下を、端から端まで部屋にする。
    枠に収めて角を丸めると、部屋の縁とページの地色の境目がくっきり出るため。
@@ -186,42 +188,61 @@
 @media(max-width:1320px){
   .dash-panel{width:min(396px,calc(100% - 272px));padding:20px 22px 16px}
 }
-@media(max-width:760px){
+@media(max-width:760px), (max-width:1000px) and (max-height:500px){
   .dashboard-shell .content .dashboard{padding:12px 14px 16px}
-  .bg-stage{min-height:440px;padding:20px 12px 96px;border-radius:24px}
+  .dash-full .dash-area{flex:1 0 auto}
+  .bg-stage{display:grid;grid-template-columns:minmax(0,1fr) minmax(128px,.8fr);
+    grid-template-rows:auto auto minmax(240px,1fr);align-items:start;gap:12px;
+    min-height:640px;padding:16px 12px max(80px,calc(68px + env(safe-area-inset-bottom)));border-radius:24px}
+  /* HUD は内容に合わせて伸ばし、床にはアバターの表示スペースを残す。 */
+  .bg-stage::after{content:'';grid-column:1 / -1;grid-row:3;min-height:240px;pointer-events:none}
   .dash-full .bg-stage{border-radius:0}
-  /* 狭い画面ではタイマーを小さくして右上に置き、名前カードはその左に収める */
-  .bg-top{top:12px;left:12px;max-width:calc(100% - 164px);gap:8px}
+  .bg-top{position:relative;top:auto;left:auto;grid-column:1;grid-row:1;min-width:0;max-width:none;width:100%;gap:8px}
   .char-card{padding:9px 14px;border-radius:18px;gap:8px}
-  .dashboard .owner{font-size:20px}
+  .dashboard .owner{max-width:100%;font-size:20px;overflow-wrap:anywhere}
   .chip{font-size:11px;padding:5px 9px}
-  .streak-card{padding:6px 12px 6px 7px}
-  .streak-icon{width:26px;height:26px;font-size:16px}
+  .streak-card{max-width:100%;flex-wrap:wrap;padding:6px 12px 6px 7px}
+  .streak-icon{flex-shrink:0;width:26px;height:26px;font-size:16px}
   .streak-card b{font-size:21px}
+  .streak-text{min-width:0}
   .dashboard .meter{width:100%;padding:8px 12px;border-radius:16px}
+  .dashboard .meter .row{gap:8px;flex-wrap:wrap}
   .dashboard .meter .row b{font-size:19px}
-  /* 狭い画面では床のあたりにアバターが立つので、左上の HUD の列のすぐ下に続けて置く */
-  .stage-goal{left:12px;width:calc(100% - 164px);top:272px;transform:none;gap:8px}
+  .stage-goal{position:relative;left:auto;top:auto;grid-column:1 / -1;grid-row:2;width:100%;
+    transform:none;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px}
   .goal-hud,.deadline-card{padding:8px 12px;border-radius:16px;gap:5px}
   .goal-hud-text{font-size:15px}
+  .goal-edit{min-height:36px;flex-shrink:0}
   .deadline-date{font-size:13.5px}
   .deadline-days b{font-size:24px}
-  .dash-menu{top:auto;bottom:14px;right:50%;transform:translateX(50%);gap:8px;width:auto}
-  .menu-btn{flex:none;flex-direction:row;gap:8px;min-width:0;padding:7px 14px 7px 7px;border-radius:16px}
+  .dash-menu{top:auto;bottom:max(14px,env(safe-area-inset-bottom));right:12px;left:12px;
+    transform:none;justify-content:center;gap:8px;width:auto}
+  .menu-btn{flex:1;max-width:200px;flex-direction:row;justify-content:center;gap:8px;min-width:0;
+    min-height:44px;padding:7px 14px 7px 7px;border-radius:16px}
   .menu-icon{width:30px;height:30px;font-size:16px;border-radius:10px}
   .menu-btn:hover{transform:none}
-  .dash-panel{top:auto;bottom:0;right:0;width:100%;max-height:min(80vh,620px);border-radius:24px 24px 0 0;
+  .dash-panel{top:auto;bottom:0;right:0;width:100%;max-height:min(80dvh,620px);border-radius:24px 24px 0 0;
+    padding:20px 16px max(20px,env(safe-area-inset-bottom));overscroll-behavior:contain;
     transform:translateY(calc(100% + 8px));box-shadow:0 -24px 46px -30px #1d3a4e55}
   .dash-panel.open{transform:none}
-  .stage-timer{top:12px;right:12px;width:140px;padding:10px 10px 10px;gap:8px;border-radius:22px}
+  .dash-panel h2{padding-right:44px}
+  .panel-close{top:10px;right:10px;width:44px;height:44px}
+  .stage-timer{position:relative;top:auto;right:auto;grid-column:2;grid-row:1;justify-self:stretch;
+    width:auto;min-width:0;padding:12px 10px;gap:10px;border-radius:22px}
   .timer-head .hud-label{display:none}
   .timer-head{justify-content:center}
   .timer-state{font-size:10.5px}
   .stage-timer .ring{width:104px;height:104px}
   .stage-timer .ring .clock{font-size:28px}
   .stage-timer .ring .num em{font-size:10px}
-  .stage-toggler{height:38px;font-size:13px;border-radius:13px}
+  .stage-toggler{height:44px;font-size:13px;border-radius:13px}
   .stage-record{font-size:11px}
+}
+
+@media(max-width:520px){
+  .goals-dialog{width:calc(100% - 24px);max-height:calc(100dvh - 24px);padding:18px;border-radius:22px}
+  .goals-dialog .goals{max-height:calc(100dvh - 60px)}
+  .goals-dialog .goals-head{padding-right:44px}
 }
 /* 進化の演出。**条件を満たした瞬間に1回だけ**流れる（seen_stage で管理） */
 /* アバターの頭の上に出す（しっぽがアバターを指す位置） */

@@ -284,3 +284,13 @@
   outline: 2px solid #8a7458;
   outline-offset: 2px;
 }
+
+@media (max-width: 520px) {
+  .setup .setup-card { padding: 4px 16px 20px; }
+  .setup .setup-label { flex-wrap: wrap; }
+  .setup .presets, .setup .freqs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .setup .preset, .setup .seg { min-height: 44px; padding: 10px 8px; }
+  .setup .avatar-picker { align-items: center; padding: 14px 12px; }
+  .setup .hues { justify-content: center; gap: 12px; }
+  .setup .hue-dot { width: 44px; height: 44px; }
+}

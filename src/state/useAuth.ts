@@ -14,6 +14,7 @@ import { supabase } from '../lib/supabase'
 
 /** 何が違うかは言わない。アドレスの存在を当てられるため（AUTH_PLAN 4章） */
 const SIGN_IN_ERROR = 'メールアドレスかパスワードが違います'
+const GOOGLE_SIGN_IN_ERROR = 'Googleでログインできませんでした。もう一度お試しください。'
 
 export type SignUpResult =
   | { status: 'signed-in' }
@@ -24,6 +25,7 @@ export function useAuth() {
   const [user, setUser] = useState<User | null>(null)
   /** セッションの確認が終わったか。これが false の間はログイン画面も出さない */
   const [ready, setReady] = useState(false)
+  const [authError, setAuthError] = useState<string | null>(null)
   const tutorialSave = useRef<{ userId: string; promise: Promise<boolean> } | null>(null)
   const currentUserId = useRef<string | null>(null)
   currentUserId.current = user?.id ?? null
@@ -33,15 +35,29 @@ export function useAuth() {
     let alive = true
 
     // リロードしてもログインが続くのはここ。localStorage のセッションから戻す
-    supabase.auth.getSession().then(({ data }) => {
-      if (!alive) return
-      setUser(data.session?.user ?? null)
-      setReady(true)
-    })
+    const restoreSession = async () => {
+      try {
+        // initialize の結果には、Google からの戻りで発生したエラーも含まれる。
+        const { error: callbackError } = await supabase.auth.initialize()
+        const { data, error } = await supabase.auth.getSession()
+        if (!alive) return
+        setUser(data.session?.user ?? null)
+        if (callbackError || error) {
+          setAuthError('ログインを完了できませんでした。もう一度お試しください。')
+        }
+      } catch {
+        if (alive) setAuthError('通信できませんでした。接続を確認して、もう一度お試しください。')
+      } finally {
+        if (alive) setReady(true)
+      }
+    }
+    void restoreSession()
 
     // ログイン・ログアウト・トークン更新をまとめて受ける
     const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (!alive) return
       setUser(session?.user ?? null)
+      if (session) setAuthError(null)
       setReady(true)
     })
 
@@ -52,11 +68,12 @@ export function useAuth() {
   }, [])
 
   /**
-   * ログインする。第2段階（Google）で差し替わるのはこの関数だけ。
+   * メールアドレスとパスワードでログインする。
    * `signInWithPassword` は throw せず `{ data, error }` を返す。
    * 返りはエラー文言（成功なら null）。
    */
   const signIn = useCallback(async (email: string, password: string) => {
+    setAuthError(null)
     const { error } = await supabase.auth.signInWithPassword({ email, password })
     if (!error) return null
     if (error.code === 'email_not_confirmed') {
@@ -68,6 +85,7 @@ export function useAuth() {
   }, [])
 
   const signUp = useCallback(async (email: string, password: string): Promise<SignUpResult> => {
+    setAuthError(null)
     try {
       const { data, error } = await supabase.auth.signUp({ email, password })
       if (error) {
@@ -88,6 +106,22 @@ export function useAuth() {
       return { status: data.session ? 'signed-in' : 'confirmation-required' }
     } catch {
       return { status: 'error', message: '通信できませんでした。接続を確認して、もう一度お試しください。' }
+    }
+  }, [])
+
+  const signInWithGoogle = useCallback(async (): Promise<string | null> => {
+    setAuthError(null)
+    try {
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          // クエリやハッシュを持ち越さず、同じアプリへ戻す。
+          redirectTo: `${window.location.origin}${window.location.pathname}`,
+        },
+      })
+      return error ? GOOGLE_SIGN_IN_ERROR : null
+    } catch {
+      return '通信できませんでした。接続を確認して、もう一度お試しください。'
     }
   }, [])
 
@@ -127,5 +161,5 @@ export function useAuth() {
     return request.promise
   }, [user, tutorialCompleted])
 
-  return { user, ready, signIn, signUp, signOut, tutorialCompleted, completeTutorial }
+  return { user, ready, authError, signIn, signUp, signInWithGoogle, signOut, tutorialCompleted, completeTutorial }
 }

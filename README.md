@@ -182,13 +182,15 @@ npm run dev                # → http://localhost:5173/
 
 ### アカウントを作成・ログインする
 
-開くとログイン画面が出ます。**メールアドレスとパスワード**を入れてください。
+開くとログイン画面が出ます。**「Googleでログイン」**、またはメールアドレスとパスワードでログインできます。
 
 - **初めての方は「アカウントを新規作成」**を押し、メールアドレス、8文字以上のパスワード、
   確認用パスワードを入力してください。登録後は初回案内へ進みます。
   メール確認が有効な環境では、届いたメール内のリンクを開いてからログインしてください。
-- メールアドレスには**本人が受信できるアドレス**を使ってください。あとで Google ログインに移すとき、同じメールなら
-  データがそのまま引き継がれます（[AUTH_PLAN.md](./AUTH_PLAN.md)）
+- **Googleで初めてログインする場合も、同じボタンでアカウントを作成できます。**
+  登録済みの方は、同じメールアドレスのGoogleアカウントを選んでください。
+  同一メールのアカウント連携は [Supabase Auth](https://supabase.com/docs/guides/auth/auth-identity-linking) が行います。
+- メールアドレスには**本人が受信できるアドレス**を使ってください。
 - **一度入れば、リロードしてもログインは続きます**（セッションはブラウザに残ります）。
   終わるときは画面右上の「ログアウト」
 - 目標も記録も**自分のものしか見えません**。DB 側の RLS が他人の行を返さないようにしています
@@ -198,10 +200,26 @@ npm run dev                # → http://localhost:5173/
 | 「メールアドレスかパスワードが違います」 | 登録時のメールアドレスとパスワードを確認 |
 | 「現在、新規登録を受け付けていません」 | 管理者が Supabase の Authentication 設定で Email と Allow new users to sign up を有効にする |
 | 確認メールが届かない | 迷惑メールを確認。送信上限の場合は時間をおいて再試行 |
+| Googleログインを完了できない | 下記のGoogleプロバイダ設定・戻り先URLを確認。Google側がテスト公開ならテストユーザーの追加も確認 |
 | ログイン画面が出ずに読み込み中のまま | `.env` の URL / anon key が合っているか |
 
 新しい Supabase プロジェクトでは Email と新規登録を有効にしてください。
 メール確認を使う場合は、Auth の URL Configuration の Site URL をアプリの URL に設定してください。
+
+Googleログインを別のSupabaseプロジェクトで使う場合は、[公式の設定手順](https://supabase.com/docs/guides/auth/social-login/auth-google)に沿って設定してください。
+
+1. Google Auth PlatformでOAuthクライアント（ウェブアプリケーション）を作成します。
+   承認済みJavaScript生成元にアプリのオリジン、承認済みリダイレクトURIに
+   `https://<SupabaseプロジェクトID>.supabase.co/auth/v1/callback` を登録します。
+2. SupabaseのAuthentication → Sign In / Providers → Googleを有効にして、Client IDとClient Secretを設定します。
+   **Client SecretはSupabase側だけに保存し、`VITE_`環境変数やコードに入れないでください。**
+3. SupabaseのURL ConfigurationでSite URLを設定し、Redirect URLsに開発用の
+   `http://localhost:5173/` と、本番アプリの戻り先URLを登録します。
+   `127.0.0.1` や別ポート、サブパスを使う場合は、そのURLも追加してください。
+4. 既存ユーザーと新規ユーザーでGoogleログインし、既存の目標・記録が表示されることを確認します。
+
+アプリは現在のオリジンとパスを戻り先に指定します。戻り先URLからのセッション取得はSupabase SDKに任せています。
+Googleログインのためにフロントエンドへ追加する環境変数や、DBスキーマの変更はありません。
 
 | コマンド | 何をするか | いつ使うか |
 | --- | --- | --- |
