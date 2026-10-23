@@ -6,8 +6,11 @@ import type { User } from '@supabase/supabase-js'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { initialState, type GoalEdit, type SetupInput } from './logic'
 import { useApp } from './useApp'
+import { calendarDate } from './calendarDate'
 
 const hooks = vi.hoisted(() => ({ auth: vi.fn(), goal: vi.fn() }))
+const timerStorage = vi.hoisted(() => ({ readTimer: vi.fn(), setTimerRunning: vi.fn() }))
+vi.mock('./timerStorage', () => timerStorage)
 vi.mock('./useAuth', () => ({ useAuth: hooks.auth }))
 vi.mock('./useGoalState', () => ({ useGoalState: hooks.goal }))
 
@@ -72,8 +75,14 @@ describe('login and tutorial flow', () => {
     vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true)
     window.history.replaceState(null, '', '/')
     data = fixtures()
+    timerStorage.readTimer.mockReset()
+    timerStorage.setTimerRunning.mockReset()
     hooks.auth.mockImplementation(() => data.auth)
     hooks.goal.mockImplementation(() => data.goal)
+    timerStorage.readTimer.mockImplementation(async (goalId: number) => ({
+      state: { goal_id: goalId, timer_on: calendarDate(), accumulated_ms: 0, running_since: null, version: 0, updated_at: null },
+      server_now: new Date().toISOString(), conflict: false,
+    }))
     renders = []
     container = document.createElement('div')
     document.body.append(container)
@@ -150,6 +159,68 @@ describe('login and tutorial flow', () => {
     expect(goal.selectGoal).toHaveBeenCalledExactlyOnceWith(3)
     expect(app.screen).toBe('main')
     expect(app.cancelNewGoal).toBeNull()
+  })
+
+  it('saves a running timer before changing goals and restores the selected goal', async () => {
+    data.auth.tutorialCompleted = true
+    data.goal.hasStarted = true
+    data.goal.hasGoalHistory = true
+    data.goal.state.goalId = 1
+    const selectGoal = vi.fn((id: number) => { data.goal.state.goalId = id })
+    Object.assign(data.goal, { selectGoal })
+    timerStorage.readTimer.mockImplementation(async (goalId: number) => ({
+      state: {
+        goal_id: goalId, timer_on: calendarDate(), accumulated_ms: goalId === 1 ? 120000 : 60000,
+        running_since: goalId === 1 ? new Date().toISOString() : null,
+        version: goalId === 1 ? 1 : 2, updated_at: null,
+      },
+      server_now: new Date().toISOString(), conflict: false,
+    }))
+    await render()
+    let save!: (reply: unknown) => void
+    timerStorage.setTimerRunning.mockImplementation(() => new Promise((resolve) => { save = resolve }))
+    let navigation!: ReturnType<typeof app.selectGoal>
+    await act(async () => { navigation = app.selectGoal(2) })
+    expect(selectGoal).not.toHaveBeenCalled()
+    expect(timerStorage.setTimerRunning.mock.calls[0][0].goal_id).toBe(1)
+    expect(timerStorage.setTimerRunning.mock.calls[0][1]).toBe(false)
+    await act(async () => {
+      save({ state: { goal_id: 1, timer_on: calendarDate(), accumulated_ms: 120000, running_since: null, version: 2, updated_at: null }, server_now: new Date().toISOString(), conflict: false })
+      await navigation
+    })
+    expect(selectGoal).toHaveBeenCalledExactlyOnceWith(2)
+    expect(app.elapsed).toBe(60)
+    expect(app.running).toBe(false)
+  })
+
+  it('stays on the current goal when pausing it could not be saved', async () => {
+    data.auth.tutorialCompleted = true
+    data.goal.hasStarted = true
+    data.goal.hasGoalHistory = true
+    data.goal.state.goalId = 1
+    const selectGoal = vi.fn()
+    Object.assign(data.goal, { selectGoal })
+    timerStorage.readTimer.mockResolvedValue({
+      state: { goal_id: 1, timer_on: calendarDate(), accumulated_ms: 120000, running_since: new Date().toISOString(), version: 1, updated_at: null },
+      server_now: new Date().toISOString(), conflict: false,
+    })
+    await render()
+    timerStorage.setTimerRunning.mockRejectedValueOnce(new Error('offline'))
+    await act(async () => { await app.selectGoal(2) })
+    expect(selectGoal).not.toHaveBeenCalled()
+    expect(app.elapsed).toBeGreaterThanOrEqual(120)
+    expect(app.timerError).toContain('保存結果')
+  })
+
+  it('can sign out even when the timer could not be read', async () => {
+    data.auth.tutorialCompleted = true
+    data.goal.hasStarted = true
+    data.goal.hasGoalHistory = true
+    data.goal.state.goalId = 1
+    timerStorage.readTimer.mockRejectedValueOnce(new Error('offline'))
+    await render()
+    await act(async () => { await app.signOut() })
+    expect(data.auth.signOut).toHaveBeenCalledOnce()
   })
 
   it('opens the edit page for the open goal and returns to the dashboard after saving', async () => {

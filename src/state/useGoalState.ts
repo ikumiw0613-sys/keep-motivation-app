@@ -258,7 +258,7 @@ export function useGoalState(userId: string | null) {
    */
   const start = async (input: SetupInput) => {
     if (!userId) return false
-    const startedAt = key(new Date())
+    const startedAt = key(today(initialState()))
 
     const { data, error } = await supabase
       .from('goals')
@@ -318,9 +318,10 @@ export function useGoalState(userId: string | null) {
   }
 
   /** 今日を達成にする。`records` に1行 INSERT するだけ（同日は UNIQUE が弾く） */
-  const markSessionDone = async () => {
+  const markSessionDone = async (day?: string) => {
     const s = latest.current
-    const doneOn = key(today(s))
+    // タイマー経由ではDBが判定した日付を使い、端末の時計がずれても日付を揃える。
+    const doneOn = day ?? key(today(s))
     if (s.done.includes(doneOn)) return
     if (s.goalId === null) return
 
