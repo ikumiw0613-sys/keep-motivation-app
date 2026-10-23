@@ -71,3 +71,107 @@ it.each([300, 5])('keeps counting past %i seconds and records only on finish', a
   expect(timer.running).toBe(true)
   expect(timer.reached).toBe(false)
 })
+
+// コールバックを動かさず時計だけ進め、バックグラウンドでの実行停止を再現する。
+it.each([300, 5])('catches up after interval callbacks are suspended for %i seconds', async (seconds) => {
+  await act(async () => root.render(createElement(Harness, { seconds })))
+  await act(async () => timer.toggle())
+
+  vi.setSystemTime(Date.now() + (seconds + 1) * 1000)
+  await tick(1)
+
+  expect(timer.elapsed).toBe(seconds + 2)
+  expect(timer.reached).toBe(true)
+  expect(timer.running).toBe(true)
+  expect(onComplete).not.toHaveBeenCalled()
+})
+
+it.each(['visibilitychange', 'focus', 'pageshow'])('updates immediately on %s after returning', async (event) => {
+  await act(async () => root.render(createElement(Harness, { seconds: 300 })))
+  await act(async () => timer.toggle())
+
+  vi.setSystemTime(Date.now() + 305000)
+  const target = event === 'visibilitychange' ? document : window
+  await act(async () => target.dispatchEvent(new Event(event)))
+
+  expect(timer.elapsed).toBe(305)
+  expect(timer.reached).toBe(true)
+  expect(timer.running).toBe(true)
+  expect(onComplete).not.toHaveBeenCalled()
+
+  // 復帰イベントが重なっても二重加算しない。
+  await act(async () => {
+    document.dispatchEvent(new Event('visibilitychange'))
+    window.dispatchEvent(new Event('focus'))
+    window.dispatchEvent(new Event('pageshow'))
+  })
+  expect(timer.elapsed).toBe(305)
+})
+
+it('preserves fractions of a second across pauses and excludes time spent paused', async () => {
+  await act(async () => root.render(createElement(Harness, { seconds: 5 })))
+  await act(async () => timer.toggle())
+  vi.setSystemTime(Date.now() + 1600)
+  await act(async () => timer.toggle())
+  expect(timer.elapsed).toBe(1)
+  expect(timer.running).toBe(false)
+
+  await tick(30)
+  await act(async () => window.dispatchEvent(new Event('focus')))
+  expect(timer.elapsed).toBe(1)
+
+  await act(async () => timer.toggle())
+  vi.setSystemTime(Date.now() + 400)
+  await act(async () => timer.toggle())
+  expect(timer.elapsed).toBe(2)
+
+  await act(async () => timer.toggle())
+  await tick(3)
+  expect(timer.elapsed).toBe(5)
+  expect(timer.reached).toBe(true)
+  expect(onComplete).not.toHaveBeenCalled()
+})
+
+it('checks actual elapsed time when finishing before the display has updated', async () => {
+  await act(async () => root.render(createElement(Harness, { seconds: 5 })))
+  await act(async () => timer.toggle())
+  vi.setSystemTime(Date.now() + 4999)
+  await act(async () => timer.finish())
+  expect(timer.reached).toBe(false)
+  expect(timer.running).toBe(true)
+  expect(onComplete).not.toHaveBeenCalled()
+
+  vi.setSystemTime(Date.now() + 1)
+  await act(async () => {
+    timer.finish()
+    timer.finish()
+  })
+  expect(timer.elapsed).toBe(5)
+  expect(timer.running).toBe(false)
+  expect(onComplete).toHaveBeenCalledTimes(1)
+  await tick(3)
+  expect(timer.elapsed).toBe(5)
+})
+
+it.each(['reset', 'complete'] as const)('discards the running clock on %s', async (action) => {
+  await act(async () => root.render(createElement(Harness, { seconds: 5 })))
+  await act(async () => timer.toggle())
+  vi.setSystemTime(Date.now() + 10000)
+  await act(async () => timer[action]())
+
+  await tick(3)
+  await act(async () => {
+    document.dispatchEvent(new Event('visibilitychange'))
+    window.dispatchEvent(new Event('focus'))
+    window.dispatchEvent(new Event('pageshow'))
+  })
+  expect(timer.elapsed).toBe(0)
+  expect(timer.running).toBe(false)
+  expect(timer.reached).toBe(false)
+  expect(onComplete).not.toHaveBeenCalled()
+
+  await act(async () => timer.toggle())
+  await tick(1)
+  expect(timer.elapsed).toBe(action === 'reset' ? 1 : 0)
+  expect(timer.running).toBe(action === 'reset')
+})
