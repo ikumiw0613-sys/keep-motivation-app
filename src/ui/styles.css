@@ -231,3 +231,14 @@
     .stats b{overflow-wrap:anywhere}
     .acts{min-width:0}
   }
+
+  /* ダッシュボードはアカウント操作も1段に収め、部屋へ高さを渡す。 */
+  @media(max-width:760px), (max-width:1000px) and (max-height:500px){
+    .dashboard-shell .account-bar{flex-wrap:nowrap;gap:6px;padding:6px max(10px,env(safe-area-inset-right)) 6px max(10px,env(safe-area-inset-left))}
+    .dashboard-shell .account-brand{width:auto;min-width:0;gap:6px;font-size:14px;letter-spacing:0}
+    .dashboard-shell .account-brand .logo{flex-shrink:0;width:24px;height:24px}
+    .dashboard-shell .account-meta{width:auto;flex-wrap:nowrap;gap:6px}
+    .dashboard-shell .account-user{display:none}
+    .dashboard-shell .account-bar .account-signout,.dashboard-shell .account-bar .account-tutorial{
+      min-height:44px;padding:7px 8px;font-size:11px}
+  }

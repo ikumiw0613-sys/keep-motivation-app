@@ -6,7 +6,7 @@
 
 /* 部屋の背景を画面いっぱいに敷く。上のアカウントバーの下を、端から端まで部屋にする。
    枠に収めて角を丸めると、部屋の縁とページの地色の境目がくっきり出るため。
-   高さは .shell（min-height:100vh）→ .content → ここ、と flex で伝える */
+   高さは .shell（100dvh）→ .content → ここ、と flex で伝える */
 .dashboard-shell .content .dashboard.dash-full{max-width:none;padding:0;display:flex;flex-direction:column}
 /* overflow は、閉じている右のパネル（.dash-panel）を画面の外へ逃がしているぶんの切り落とし。
    枠に余白があった頃はその中に収まっていたが、端から端まで広げると横スクロールが出る */
@@ -60,7 +60,7 @@
    名前カードと同じ幅くらいに抑えて HUD の列に並べる */
 .dashboard .meter{width:240px;max-width:100%;padding:10px 14px;border-radius:18px}
 .dashboard .meter .row{margin-bottom:7px;align-items:flex-end}
-.dashboard .meter .row span{display:flex;flex-direction:column;gap:4px;font-family:var(--round);font-size:13.5px;font-weight:800;color:#3a2a1a}
+.dashboard .meter .row span{display:flex;align-items:baseline;gap:2px;font-family:var(--round);font-size:13.5px;font-weight:800;color:#3a2a1a}
 .dashboard .meter .row b{font-family:var(--num);font-size:22px;font-weight:700;line-height:1;color:#3a2a1a}
 .dashboard .meter .row b small{font-family:var(--num);font-size:12px;color:#9a8468}
 .dashboard .gauge{height:7px;background:rgba(120,90,50,.12);box-shadow:inset 0 1px 2px rgba(92,64,28,.12)}
@@ -74,7 +74,8 @@
 .stage-goal{position:absolute;left:28px;top:50%;transform:translateY(-35%);z-index:1;width:min(300px,30%);
   display:flex;flex-direction:column;gap:10px;text-align:left}
 .goal-hud,.deadline-card{display:flex;flex-direction:column;gap:7px;padding:12px 16px;border-radius:18px}
-.goal-hud-text{margin:0;font-family:var(--round);font-size:18px;font-weight:800;line-height:1.45;color:#3a2a1a;
+.goal-hud{background:rgba(255,253,247,.94);border-color:rgba(116,149,104,.25);box-shadow:0 2px 0 #fff inset,0 10px 28px -20px rgba(92,64,28,.4)}
+.goal-hud-text{margin:0;font-family:var(--round);font-size:20px;font-weight:800;line-height:1.45;color:#3a2a1a;
   overflow-wrap:anywhere;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:3;overflow:hidden}
 .goal-hud-head{display:flex;align-items:center;justify-content:space-between;gap:8px}
 /* 目標の修正。HUD の文字を邪魔しない小さな丸ボタン */
@@ -85,7 +86,9 @@
 .goal-edit:focus-visible{outline:2px solid hsl(var(--h) 50% 40%);outline-offset:2px}
 .goal-edit-icon{display:inline-flex;font-size:13px}
 .deadline-row{display:flex;align-items:baseline;justify-content:space-between;flex-wrap:wrap;gap:2px 12px}
-.deadline-date{font-family:var(--round);font-size:15px;font-weight:800;color:#3a2a1a}
+.deadline-card{background:rgba(250,245,235,.66);box-shadow:none;border-color:rgba(144,120,85,.12)}
+.deadline-card .hud-label{color:#8a7458}
+.deadline-date{font-family:var(--round);font-size:13px;font-weight:500;color:#8a7458}
 .deadline-days{margin:0;display:flex;align-items:baseline;gap:3px;font-family:var(--round);font-size:12.5px;
   font-weight:700;color:#5b4631;white-space:nowrap}
 .deadline-days b{font-family:var(--num);font-size:30px;font-weight:700;line-height:1;color:#3f9a7a;
@@ -143,10 +146,13 @@
 .stage-timer{position:absolute;top:18px;right:28px;z-index:2;width:224px;padding:14px 16px;
   display:flex;flex-direction:column;align-items:center;gap:10px;border-radius:28px}
 .timer-head{width:100%;display:flex;align-items:center;justify-content:space-between;gap:8px}
-.timer-state{font-family:var(--round);font-size:11.5px;font-weight:700;color:#8a7458;white-space:nowrap}
+.timer-state{display:inline-flex;align-items:center;gap:4px;font-family:var(--round);font-size:11.5px;font-weight:700;color:#8a7458;white-space:nowrap}
+.timer-check{display:inline-flex;font-size:14px}
+.timer-hint{margin:0;min-height:2.8em;font-family:var(--round);font-size:11px;font-weight:500;line-height:1.4;color:#806c53;text-align:center;text-wrap:balance}
+.stage-timer.achieved{border-color:hsl(var(--h) 28% 76% / .6);background:rgba(249,253,243,.9)}
 .timer-state.done{color:hsl(var(--h) 55% 34%)}
 .stage-timer.running .timer-state{color:hsl(var(--h) 55% 36%)}
-.stage-timer.running .timer-state::before{content:'';display:inline-block;width:7px;height:7px;margin-right:6px;
+.stage-timer.running:not(.achieved) .timer-state::before{content:'';display:inline-block;width:6px;height:6px;margin-right:1px;
   border-radius:50%;background:currentColor;vertical-align:1px;animation:timer-blink 1.4s ease-in-out infinite}
 .stage-timer .ring{width:164px;height:164px}
 .stage-timer .ring .track{stroke:rgba(120,90,50,.12);stroke-width:8}
@@ -155,7 +161,6 @@
 .stage-timer .ring .num{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px}
 .stage-timer .ring .clock{font-family:var(--num);font-size:44px;font-weight:600;line-height:1;letter-spacing:-.02em;
   color:#2e2216;font-variant-numeric:tabular-nums}
-.stage-timer .ring .num em{margin:0;font-family:var(--num);font-size:12px;font-weight:500;letter-spacing:.04em;color:#a08a6c}
 .stage-toggler{width:100%;height:46px;display:flex;align-items:center;justify-content:center;gap:8px;border:none;border-radius:16px;
   cursor:pointer;font:inherit;font-family:var(--round);font-size:15px;font-weight:800;color:#fff;
   background:linear-gradient(135deg,hsl(var(--h) 62% 50%),hsl(calc(var(--h) - 14) 64% 40%));
@@ -194,36 +199,54 @@
 }
 @media(max-width:760px), (max-width:1000px) and (max-height:500px){
   .dashboard-shell .content .dashboard{padding:12px 14px 16px}
-  .dash-full .dash-area{flex:1 0 auto}
-  .bg-stage{display:grid;grid-template-columns:minmax(0,1fr) minmax(128px,.8fr);
-    grid-template-rows:auto auto minmax(240px,1fr);align-items:start;gap:12px;
-    min-height:640px;padding:16px 12px max(80px,calc(68px + env(safe-area-inset-bottom)));border-radius:24px}
-  /* HUD は内容に合わせて伸ばし、床にはアバターの表示スペースを残す。 */
-  .bg-stage::after{content:'';grid-column:1 / -1;grid-row:3;min-height:240px;pointer-events:none}
+  .dashboard-shell .content .dashboard.dash-full{flex:1;min-height:0}
+  .dash-full .dash-area{flex:1 1 0;min-height:0}
+  .bg-stage{display:grid;grid-template-columns:minmax(0,1fr) minmax(128px,.82fr);
+    grid-template-rows:auto auto minmax(0,1fr);align-items:start;gap:10px;
+    --mobile-footer-space:max(60px,calc(50px + env(safe-area-inset-bottom)));
+    min-height:0;padding:10px 12px var(--mobile-footer-space);border-radius:24px}
+  /* カードの下に残った高さを部屋へ渡し、小さい画面では3D側も縮小する。
+     メニューの背面まで床を延ばし、操作カードとアバターが重ならないようにする。 */
+  .stage-avatar{position:relative;inset:auto;grid-column:1 / -1;grid-row:3;align-self:stretch;
+    min-height:0;width:calc(100% + 24px);height:calc(100% + var(--mobile-footer-space) - 12px);margin:0 -12px}
   .dash-full .bg-stage{border-radius:0}
-  .bg-top{position:relative;top:auto;left:auto;grid-column:1;grid-row:1;min-width:0;max-width:none;width:100%;gap:8px}
-  .char-card{padding:9px 14px;border-radius:18px;gap:8px}
-  .dashboard .owner{max-width:100%;font-size:20px;overflow-wrap:anywhere}
-  .chip{font-size:11px;padding:5px 9px}
-  .streak-card{max-width:100%;flex-wrap:wrap;padding:6px 12px 6px 7px}
-  .streak-icon{flex-shrink:0;width:26px;height:26px;font-size:16px}
-  .streak-card b{font-size:21px}
+  .bg-top{position:relative;top:auto;left:auto;grid-column:1;grid-row:1;min-width:0;max-width:none;width:100%;gap:10px;
+    padding:12px;background:rgba(255,252,246,.8);border:1px solid rgba(255,255,255,.85);border-radius:22px;
+    box-shadow:0 8px 24px -18px rgba(92,64,28,.3)}
+  .bg-top .hud-card{background:none;border:0;box-shadow:none;-webkit-backdrop-filter:none;backdrop-filter:none}
+  .char-card{display:grid;grid-template-columns:minmax(0,1fr) auto;padding:0;border-radius:0;gap:6px}
+  .dashboard .owner{max-width:100%;font-size:16px;overflow-wrap:anywhere;
+    display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden}
+  .chip{font-size:10px;padding:4px 7px}
+  .streak-card{max-width:100%;flex-wrap:wrap;padding:0;gap:6px}
+  .streak-icon{flex-shrink:0;width:24px;height:24px;font-size:15px}
+  .streak-card b{font-size:20px}
   .streak-text{min-width:0}
-  .dashboard .meter{width:100%;padding:8px 12px;border-radius:16px}
-  .dashboard .meter .row{gap:8px;flex-wrap:wrap}
-  .dashboard .meter .row b{font-size:19px}
+  .streak-text{font-size:11px}
+  .streak-text small{font-size:9px}
+  .dashboard .meter{width:100%;padding:0;border-radius:0}
+  .dashboard .meter .row{gap:6px;margin-bottom:4px;align-items:center}
+  .dashboard .meter .row span{flex-wrap:wrap;align-items:baseline;font-size:12px;line-height:1.3;gap:1px}
+  .dashboard .meter .row b{font-size:17px;white-space:nowrap;color:#418166}
+  .dashboard .gauge{height:5px}
+  .dashboard .meter-note{margin-top:5px;font-size:10px;line-height:1.4}
   .stage-goal{position:relative;left:auto;top:auto;grid-column:1 / -1;grid-row:2;width:100%;
-    transform:none;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px}
-  .goal-hud,.deadline-card{padding:8px 12px;border-radius:16px;gap:5px}
-  .goal-hud-text{font-size:15px}
-  .goal-edit{min-height:36px;flex-shrink:0}
-  .deadline-date{font-size:13.5px}
+    transform:none;display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr);gap:8px}
+  .goal-hud,.deadline-card{padding:11px 12px;border-radius:18px;gap:7px}
+  .goal-hud{position:relative;padding-right:32px}
+  .goal-hud-head{min-height:12px}
+  .goal-hud-text{font-size:18px;line-height:1.4;-webkit-line-clamp:2}
+  .goal-edit{position:absolute;top:0;right:0;justify-content:center;min-width:44px;min-height:44px;padding:0;border:0;background:none}
+  .goal-edit-icon{font-size:15px}
+  .goal-edit-label{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+  .deadline-row{gap:4px 8px}
+  .deadline-date{font-size:11px}
   .deadline-days b{font-size:24px}
-  .dash-menu{top:auto;bottom:max(14px,env(safe-area-inset-bottom));right:12px;left:12px;
+  .dash-menu{top:auto;bottom:max(10px,env(safe-area-inset-bottom));right:16px;left:16px;
     transform:none;justify-content:center;gap:8px;width:auto}
   .menu-btn{flex:1;max-width:200px;flex-direction:row;justify-content:center;gap:8px;min-width:0;
-    min-height:44px;padding:7px 14px 7px 7px;border-radius:16px}
-  .menu-icon{width:30px;height:30px;font-size:16px;border-radius:10px}
+    min-height:44px;padding:5px 12px;border-radius:15px;background:rgba(255,252,246,.92)}
+  .menu-icon{width:26px;height:26px;font-size:16px;border-radius:9px}
   .menu-btn:hover{transform:none}
   .dash-panel{top:auto;bottom:0;right:0;width:100%;max-height:min(80dvh,620px);border-radius:24px 24px 0 0;
     padding:20px 16px max(20px,env(safe-area-inset-bottom));overscroll-behavior:contain;
@@ -232,15 +255,44 @@
   .dash-panel h2{padding-right:44px}
   .panel-close{top:10px;right:10px;width:44px;height:44px}
   .stage-timer{position:relative;top:auto;right:auto;grid-column:2;grid-row:1;justify-self:stretch;
-    width:auto;min-width:0;padding:12px 10px;gap:10px;border-radius:22px}
+    width:auto;min-width:0;padding:12px 10px 10px;gap:6px;border-radius:22px}
   .timer-head .hud-label{display:none}
   .timer-head{justify-content:center}
   .timer-state{font-size:10.5px}
-  .stage-timer .ring{width:104px;height:104px}
-  .stage-timer .ring .clock{font-size:28px}
-  .stage-timer .ring .num em{font-size:10px}
+  .stage-timer .ring{width:100%;height:52px}
+  .stage-timer .ring > svg{display:none}
+  .stage-timer .ring .clock{font-size:42px;letter-spacing:-.03em}
+  .timer-hint{width:100%;font-size:10.5px;min-height:2.8em;display:grid;place-items:center}
   .stage-toggler{height:44px;font-size:13px;border-radius:13px}
   .stage-record{font-size:11px}
+  .timer-feedback{position:absolute;top:calc(100% + 8px);right:0;z-index:5;
+    width:min(300px,calc(100vw - 24px));margin:0;padding:12px;border-radius:16px;
+    background:#fffdf8;box-shadow:0 12px 32px #3a2a1a30}
+}
+
+@media(min-width:600px) and (max-width:1000px) and (max-height:500px){
+  .bg-stage{grid-template-columns:minmax(0,1fr) minmax(128px,.7fr) minmax(0,1fr);
+    grid-template-rows:auto minmax(0,1fr);padding-top:8px}
+  .stage-goal{grid-column:3;grid-row:1;display:flex;flex-direction:column}
+  .stage-avatar{grid-row:2}
+  .stage-timer .ring{height:40px}
+  .stage-timer .ring .clock{font-size:36px}
+}
+
+@media(max-width:760px) and (max-height:600px), (max-width:1000px) and (max-height:500px){
+  .bg-stage{gap:6px;padding-top:8px;--mobile-footer-space:max(54px,calc(48px + env(safe-area-inset-bottom)))}
+  .bg-top{padding:10px;gap:7px;border-radius:18px}
+  .dashboard .owner{font-size:14px;-webkit-line-clamp:1}
+  .dashboard .meter .row span{font-size:11px}
+  .dashboard .meter-note{font-size:9px;margin-top:4px}
+  .stage-timer{padding:10px 8px 8px;gap:4px;border-radius:18px}
+  .stage-timer .ring{height:40px}
+  .stage-timer .ring .clock{font-size:36px}
+  .timer-hint{font-size:10px}
+  .goal-hud,.deadline-card{padding-top:9px;padding-bottom:9px;gap:5px}
+  .goal-hud-text{font-size:14px}
+  .deadline-days b{font-size:22px}
+  .stage-avatar{height:calc(100% + var(--mobile-footer-space) - 36px)}
 }
 
 @media(max-width:520px){

@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act, createElement, useState } from 'react'
+import { act, createElement, useState, type ComponentProps } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import MainPage from './MainPage'
@@ -42,10 +42,16 @@ afterEach(async () => {
 
 async function render(expired = false) {
   const state = { ...goal(1), deadline: expired ? '2000-01-01' : '2099-12-31' }
+  await renderDashboard({ state })
+}
+
+async function renderDashboard(overrides: Partial<ComponentProps<typeof MainPage>> = {}) {
+  const state = overrides.state ?? goal(1)
   await act(async () => root.render(createElement(MainPage, {
     state, goals: [state, goal(2)], currentGoalId: 1, onSelectGoal: select,
     session: 300, elapsed: 0, running: false, reached: false, onToggleTimer: vi.fn(), onFinishTimer: vi.fn(),
     onNewGoal: newGoal, onEditGoal: vi.fn(), onExtend: vi.fn(), onStageSeen: vi.fn(),
+    ...overrides,
   })))
 }
 
@@ -137,7 +143,8 @@ it('continues measuring after recording and offers pause and resume controls', a
   await clickButton('スタート')
   await act(async () => vi.advanceTimersByTime(6000))
   await clickButton('記録する')
-  expect(container.querySelector('.timer-state')?.textContent).toBe('今日は記録ずみ')
+  expect(container.querySelector('.timer-state')?.textContent).toBe('今日の目標達成')
+  expect(container.querySelector('.timer-hint')?.textContent).toBe('5秒達成後も継続中')
   expect(container.querySelector('.clock')?.textContent).toBe('0:06')
   expect(container.querySelector('.stage-toggler.finish')).toBeNull()
 
@@ -155,7 +162,8 @@ it('can start a new timer on a recorded day and displays the actual elapsed time
   vi.useFakeTimers()
   await act(async () => root.render(createElement(TimerHarness, { recorded: true })))
   expect(container.querySelector('.clock')?.textContent).toBe('0:00')
-  await clickButton('スタート')
+  expect(container.querySelector('.timer-hint')?.textContent).toBe('今日の達成は記録ずみ')
+  await clickButton('再開')
   await act(async () => vi.advanceTimersByTime(2000))
   await clickButton('一時停止')
   expect(container.querySelector('.clock')?.textContent).toBe('0:02')
@@ -164,4 +172,61 @@ it('can start a new timer on a recorded day and displays the actual elapsed time
   expect(container.querySelector('.clock')?.textContent).toBe('0:06')
   expect(container.querySelector('.stage-toggler.finish')).toBeNull()
   expect(container.querySelector<HTMLButtonElement>('.stage-toggler')?.disabled).toBe(false)
+})
+
+it('shows remaining time before completion without a second timer total', async () => {
+  await renderDashboard({ elapsed: 200, running: true })
+  expect(container.querySelector('.clock')?.textContent).toBe('3:20')
+  expect(container.querySelector('.timer-hint')?.textContent).toBe('あと1:40で今日の達成')
+  expect(container.querySelector('.timer-state')?.textContent).not.toContain('目標達成')
+  expect(container.querySelector('.ring')?.textContent).not.toContain('/ 5:00')
+})
+
+it('keeps the record action separate from reaching five minutes', async () => {
+  const finish = vi.fn()
+  await renderDashboard({ elapsed: 319, running: true, reached: true, onFinishTimer: finish })
+  expect(container.querySelector('.timer-state')?.textContent).toBe('5分できました')
+  expect(container.querySelector('.timer-hint')?.textContent).toBe('記録すると今日の達成に')
+  await clickButton('記録する')
+  expect(finish).toHaveBeenCalledOnce()
+})
+
+it.each([true, false])('shows achieved time with a truthful running state (running = %s)', async (running) => {
+  const state = goal(1)
+  state.done = [key(today(state))]
+  await renderDashboard({ state, elapsed: 319, reached: true, running })
+  expect(container.querySelector('.clock')?.textContent).toBe('5:19')
+  expect(container.querySelector('.timer-state')?.textContent).toBe('今日の目標達成')
+  expect(container.querySelector('.timer-hint')?.textContent).toBe(running ? '5分達成後も継続中' : '5分達成・一時停止中')
+  expect(container.querySelector('.stage-toggler')?.textContent).toBe(running ? '一時停止' : '再開')
+})
+
+it('explains rolling growth progress from the existing five-cycle window', async () => {
+  vi.useFakeTimers()
+  vi.setSystemTime(new Date('2026-10-23T12:00:00+09:00'))
+  await renderDashboard({ state: {
+    ...goal(1), startedAt: '2026-10-15', seenStage: 1,
+    done: ['2026-10-15', '2026-10-16', '2026-10-20', '2026-10-22'],
+  } })
+  expect(container.querySelector('.meter .row')?.textContent).toBe('成体まであと2回')
+  expect(container.querySelector('.meter-note')?.textContent).toBe('直近5回中、2回達成')
+})
+
+it('counts growth by cycles even when several days belong to one cycle', async () => {
+  vi.useFakeTimers()
+  vi.setSystemTime(new Date('2026-10-23T12:00:00+09:00'))
+  await renderDashboard({ state: {
+    ...goal(1), startedAt: '2026-10-23', cycleDays: 3,
+    done: ['2026-10-23', '2026-10-24'],
+  } })
+  expect(container.querySelector('.meter .row')?.textContent).toBe('幼体まであと1回')
+  expect(container.querySelector('.meter-note')?.textContent).toBe('2回連続の達成で成長')
+})
+
+it('keeps goal editing accessible after compacting the action', async () => {
+  const edit = vi.fn()
+  await renderDashboard({ onEditGoal: edit })
+  const button = container.querySelector<HTMLButtonElement>('[aria-label="目標を修正"]')!
+  await act(async () => button.click())
+  expect(edit).toHaveBeenCalledOnce()
 })
