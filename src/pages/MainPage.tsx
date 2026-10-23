@@ -136,6 +136,16 @@ export default function MainPage({
   useAccent(state.hue, mood?.s ?? 24)
   const next = nextGoalOf(state.done, state.cycleDays, startOf(state), key(t))
   const run = runOf(state)
+  const durationText = session % 60 === 0 ? `${session / 60}分` : `${session}秒`
+  const timerHint = !timerReady
+    ? '接続を確認しています'
+    : doneToday
+      ? elapsed >= session
+        ? `${durationText}達成${running ? '後も継続中' : '・一時停止中'}`
+        : '今日の達成は記録ずみ'
+      : reached
+        ? '記録すると今日の達成に'
+        : `あと${fmtClock(Math.max(0, session - elapsed))}で今日の達成`
 
   // **演出は条件を満たした瞬間に1回だけ。** 計算したステージが
   // 「見せ終わったステージ」を超えていたら流し、終わってから記録を進める。
@@ -216,7 +226,7 @@ export default function MainPage({
             <div className="bg-top">
               {/* 気分は言葉にしない。姿勢や色、光の粒といったアバターの見た目で伝わる */}
               <div className="hud-card char-card">
-                <p className="owner">{state.name}</p>
+                <p className="owner" title={state.name}>{state.name}</p>
                 <span className="chip stage-chip">{stage.name}</span>
               </div>
               <div className="hud-card streak-card">
@@ -225,23 +235,17 @@ export default function MainPage({
                 </span>
                 <b>{run}</b>
                 <span className="streak-text">
-                  サイクル連続
+                  回連続で達成
                   <small>{cycleLabel(state.cycleDays)}</small>
                 </span>
               </div>
               {/* 進化ゲージ。下中央だとアバターにかぶって見づらいので、名前・連続日数の下に小さく置く。
-                  **「あと○回」ではなく `x / y`**。ステージ2は窓の条件なので、
-                  「あと○回」はサボるほど増えるうえ、その回数では届かない */}
+                  残りは現在の条件との差。直近の集計も添え、連続・期間内の条件を区別する。 */}
               <div className="hud-card meter">
                 <div className="row">
                   <span>
-                    <small className="hud-label">{next ? 'NEXT' : 'COMPLETE'}</small>
-                    {next ? next.stage.name : stage.name}
+                    {next ? <>{next.stage.name}まであと<b>{Math.max(0, next.need - next.have)}</b>回</> : `${stage.name}まで成長！`}
                   </span>
-                  <b>
-                    {next ? next.have : '★'}
-                    <small>{next ? `/${next.need}` : ''}</small>
-                  </b>
                 </div>
                 <div className="gauge">
                   <i style={{ width: `${next ? Math.min(100, (next.have / next.need) * 100) : 100}%` }} />
@@ -249,8 +253,8 @@ export default function MainPage({
                 {next && (
                   <p className="meter-note">
                     {next.kind === 'run'
-                      ? `連続 ${next.have} / ${next.need} サイクル`
-                      : `直近${next.window}サイクルで ${next.have} / ${next.need}`}
+                      ? `${next.need}回連続の達成で成長`
+                      : `直近${next.window}回中、${next.have}回達成`}
                   </p>
                 )}
               </div>
@@ -262,9 +266,9 @@ export default function MainPage({
               <div className="hud-card goal-hud">
                 <div className="goal-hud-head">
                   <small className="hud-label">GOAL</small>
-                  <button type="button" className="goal-edit" onClick={onEditGoal}>
+                  <button type="button" className="goal-edit" aria-label="目標を修正" onClick={onEditGoal}>
                     <span aria-hidden="true" className="goal-edit-icon"><PencilIcon /></span>
-                    修正
+                    <span className="goal-edit-label">修正</span>
                   </button>
                 </div>
                 <p className="goal-hud-text" title={state.goal}>{state.goal}</p>
@@ -304,15 +308,15 @@ export default function MainPage({
               />
             </div>
 
-            <div className={`hud-card stage-timer${running ? ' running' : ''}`} aria-label="5分タイマー">
+            <div className={`hud-card stage-timer${running ? ' running' : ''}${doneToday ? ' achieved' : ''}`} aria-label={`${durationText}タイマー`}>
               <div className="timer-head">
                 <span className="hud-label">FOCUS</span>
                 <span className={`timer-state${doneToday ? ' done' : ''}`}>
-                  {timerBusy ? '保存中…' : timerError && !timerReady ? '接続待ち' : !timerReady ? '読み込み中…' : doneToday ? '今日は記録ずみ' : reached ? '5分たちました' : running ? '集中しています' : elapsed > 0 ? '一時停止中' : '5分だけ'}
+                  {timerBusy ? '保存中…' : timerError && !timerReady ? '接続待ち' : !timerReady ? '読み込み中…' : doneToday ? <><span className="timer-check" aria-hidden="true"><CheckIcon /></span>今日の目標達成</> : reached ? `${durationText}できました` : running ? '集中しています' : elapsed > 0 ? '一時停止中' : `${durationText}だけ、はじめよう`}
                 </span>
               </div>
               <div className="ring">
-                <svg viewBox="0 0 120 120">
+                <svg viewBox="0 0 120 120" aria-hidden="true">
                   <defs>
                     <linearGradient id="timer-grad" x1="0" y1="0" x2="1" y2="1">
                       <stop offset="0%" stopColor="hsl(var(--h) 70% 62%)" />
@@ -335,9 +339,9 @@ export default function MainPage({
                 </svg>
                 <div className="num">
                   <span className="clock">{fmtClock(elapsed)}</span>
-                  <em>/ {fmtClock(session)}</em>
                 </div>
               </div>
+              <p className="timer-hint">{timerHint}</p>
               {reached && !doneToday ? (
                 <button type="button" className="stage-toggler finish" onClick={onFinishTimer} disabled={!timerReady || timerBusy}>
                   <span aria-hidden="true" className="toggler-icon"><CheckIcon /></span>
@@ -348,14 +352,14 @@ export default function MainPage({
                   type="button"
                   className={`stage-toggler${running ? ' running' : ''}`}
                   aria-pressed={running}
-                  aria-label={running ? '一時停止' : elapsed > 0 ? '再開する' : 'タイマーをはじめる'}
+                  aria-label={running ? '一時停止' : elapsed > 0 || doneToday ? '再開する' : 'タイマーをはじめる'}
                   onClick={onToggleTimer}
                   disabled={!timerReady || timerBusy}
                 >
                   <span aria-hidden="true" className="toggler-icon">
                     {running ? <PauseIcon /> : <PlayIcon />}
                   </span>
-                  <span aria-hidden="true">{running ? '一時停止' : elapsed > 0 ? '再開' : 'スタート'}</span>
+                  <span aria-hidden="true">{running ? '一時停止' : elapsed > 0 || doneToday ? '再開' : 'スタート'}</span>
                 </button>
               )}
               {timerError && (

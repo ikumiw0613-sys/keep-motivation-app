@@ -21,7 +21,7 @@ type Props = {
 /**
  * 1ワールド単位あたりの画素数。300px 幅の枠（カメラ距離 4.6・fov 32）での
  * 見え方をそのまま数にしたもの。枠を広げてもこの比率を保つようにカメラを
- * 引くので、**枠の大きさが変わってもひよこの大きさは変わらない。**
+ * 引くので、同じ表示密度の枠ではひよこの大きさは変わらない。
  * 例外は、部屋の外が映るほど枠が広いとき（→ StageFit の上限）。
  */
 const PX_PER_UNIT = 118
@@ -129,7 +129,9 @@ function StageFit({ children }: { children: (roam: Roam) => ReactNode }) {
     ROOM_WALL_TOP - ROOM_PAD - tanHalfFov * ROOM_WALL_BACK,
     (2 * (ROOM_HALF_W - ROOM_PAD - aspect * tanHalfFov * ROOM_WALL_BACK)) / aspect
   )
-  const unitsTall = Math.max(Math.min(height / PX_PER_UNIT, maxUnitsTall), MIN_UNITS_TALL)
+  // モバイルの部屋では少し近くから見せる。低い枠の全身フィットと部屋の上限は維持する。
+  const pixelsPerUnit = width <= 760 ? 130 : PX_PER_UNIT
+  const unitsTall = Math.max(Math.min(height / pixelsPerUnit, maxUnitsTall), MIN_UNITS_TALL)
   const unitsWide = unitsTall * aspect
 
   const cameraZ = unitsTall / 2 / tanHalfFov
