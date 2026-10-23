@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useAuth } from './useAuth'
 import { useGoalState } from './useGoalState'
 import { isDebugPath, useScreen, type Screen } from './useScreen'
-import { useTimer } from './useTimer'
+import { useDailyTimer } from './useDailyTimer'
 import { allowedScreen, entryScreen } from './screenFlow'
 
 export type { Screen }
@@ -15,7 +15,7 @@ export type { Screen }
 const DEBUG_SESSION = 5
 
 /**
- * ログイン状態（useAuth）・画面遷移（useScreen）・タイマー（useTimer）・
+ * ログイン状態（useAuth）・画面遷移（useScreen）・タイマー（useDailyTimer）・
  * 目標の状態と保存（useGoalState）を1つのAPIにまとめる合成層。
  * 4つの間をまたぐ操作（達成でタイマーを止める、ログアウトで全部戻す、など）はここで配線する。
  */
@@ -38,8 +38,27 @@ export function useApp() {
   const hasCurrentGoal = goal.hasStarted && goal.state.goalId !== null
   const screen = allowedScreen(requestedScreen, tutorialCompleted, hasCurrentGoal)
   // デバッグ画面は開発時しか読み込まれない（app/App.tsx）が、長さの切り替えも DEV で閉じておく
-  const session = import.meta.env.DEV && screen === 'debug' ? DEBUG_SESSION : SESSION
-  const timer = useTimer(goal.markSessionDone, session)
+  const debug = import.meta.env.DEV && screen === 'debug'
+  const session = debug ? DEBUG_SESSION : SESSION
+  const timer = useDailyTimer(goal.markSessionDone, session, {
+    userId,
+    goalId: goal.loaded ? goal.state.goalId : null,
+    recordedDays: goal.state.done,
+    local: debug,
+    dayOffset: goal.state.dayOffset,
+  })
+  const navigating = useRef(false)
+
+  /** 保存できなかった場合は元の目標に留まり、再試行できるようにする。 */
+  const afterPause = async (action: () => void | Promise<void>) => {
+    if (navigating.current) return
+    navigating.current = true
+    try {
+      if (await timer.pause() && currentUserId.current === userId) await action()
+    } finally {
+      navigating.current = false
+    }
+  }
 
   useEffect(() => {
     if (!userId || !goal.loaded) {
@@ -69,21 +88,18 @@ export function useApp() {
     }
   }
 
-  const reset = () => {
-    timer.reset()
+  const reset = () => afterPause(() => {
     goal.reset()
     setScreen('setup')
-  }
+  })
 
   /**
-   * 目標一覧で別の目標に切り替える。**走っているタイマーは捨てる。**
-   * 5分の途中で切り替えたぶんが、切り替え先の記録になってしまうため。
+   * 別の目標へ移る前に、元の目標の計測を停止してDBに確定する。
    */
-  const selectGoal = (id: number) => {
-    timer.reset()
+  const selectGoal = (id: number) => afterPause(() => {
     goal.selectGoal(id)
     setScreen('main')
-  }
+  })
 
   const recordOnly = () => {
     timer.complete()
@@ -101,18 +117,17 @@ export function useApp() {
     goal.setDayOffset(days)
   }
 
-  const newGoal = () => {
-    timer.reset()
+  const newGoal = () => afterPause(() => {
     setReturnGoalId(goal.currentGoalId)
     goal.newGoal()
     setScreen('setup')
-  }
+  })
 
   /** 作成画面の「戻る」。**まだ何も作っていない**ので、前に開いていた目標を開き直すだけ */
-  const cancelNewGoal = () => {
+  const cancelNewGoal = async () => {
     if (returnGoalId === null) return
+    await selectGoal(returnGoalId)
     setReturnGoalId(null)
-    selectGoal(returnGoalId)
   }
 
   /** 目標の修正画面を開く。**タイマーは止めない**（開いている目標は変わらない） */
@@ -132,6 +147,9 @@ export function useApp() {
 
   /** ログアウト。目標の状態は user が null になった useGoalState 側で戻る */
   const signOut = async () => {
+    // 停止は試みるが、通信障害があってもアカウントから退出できるようにする。
+    await timer.pause()
+    if (currentUserId.current !== userId) return
     timer.reset()
     setReturnGoalId(null)
     setScreen('top')
@@ -172,6 +190,10 @@ export function useApp() {
     elapsed: timer.elapsed,
     running: timer.running,
     reached: timer.reached,
+    timerReady: timer.ready,
+    timerBusy: timer.busy,
+    timerError: timer.error,
+    retryTimer: timer.retry,
     toggleTimer: timer.toggle,
     finishTimer: timer.finish,
     recordOnly,

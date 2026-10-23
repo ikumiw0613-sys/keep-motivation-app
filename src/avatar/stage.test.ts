@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest'
-import { key, shift } from '../state/logic'
+import { initialState, key, shift, today } from '../state/logic'
 import { evolutionOf, FINAL_FORM, nextGoalOf } from './stage'
 
 /** 今日から n 日前の日付キー */
-const ago = (n: number) => key(shift(new Date(), -n))
+const ago = (n: number) => key(shift(today(initialState()), -n))
 const TODAY = ago(0)
 
 /** 「n日前に始めて、これらの日につけた」形でステージを出す */

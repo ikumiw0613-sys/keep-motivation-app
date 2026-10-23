@@ -89,6 +89,10 @@ type Props = {
   running: boolean
   /** 時間を過ぎた。未記録なら「記録する」を表示する */
   reached: boolean
+  timerReady?: boolean
+  timerBusy?: boolean
+  timerError?: string | null
+  onRetryTimer?: () => void
   onToggleTimer: () => void
   /** 今日の記録を付ける。計測は続ける */
   onFinishTimer: () => void
@@ -112,6 +116,10 @@ export default function MainPage({
   elapsed,
   running,
   reached,
+  timerReady = true,
+  timerBusy = false,
+  timerError = null,
+  onRetryTimer,
   onToggleTimer,
   onFinishTimer,
   onNewGoal,
@@ -300,7 +308,7 @@ export default function MainPage({
               <div className="timer-head">
                 <span className="hud-label">FOCUS</span>
                 <span className={`timer-state${doneToday ? ' done' : ''}`}>
-                  {doneToday ? '今日は記録ずみ' : reached ? '5分たちました' : running ? '集中しています' : elapsed > 0 ? '一時停止中' : '5分だけ'}
+                  {timerBusy ? '保存中…' : timerError && !timerReady ? '接続待ち' : !timerReady ? '読み込み中…' : doneToday ? '今日は記録ずみ' : reached ? '5分たちました' : running ? '集中しています' : elapsed > 0 ? '一時停止中' : '5分だけ'}
                 </span>
               </div>
               <div className="ring">
@@ -331,7 +339,7 @@ export default function MainPage({
                 </div>
               </div>
               {reached && !doneToday ? (
-                <button type="button" className="stage-toggler finish" onClick={onFinishTimer}>
+                <button type="button" className="stage-toggler finish" onClick={onFinishTimer} disabled={!timerReady || timerBusy}>
                   <span aria-hidden="true" className="toggler-icon"><CheckIcon /></span>
                   記録する
                 </button>
@@ -342,12 +350,19 @@ export default function MainPage({
                   aria-pressed={running}
                   aria-label={running ? '一時停止' : elapsed > 0 ? '再開する' : 'タイマーをはじめる'}
                   onClick={onToggleTimer}
+                  disabled={!timerReady || timerBusy}
                 >
                   <span aria-hidden="true" className="toggler-icon">
                     {running ? <PauseIcon /> : <PlayIcon />}
                   </span>
                   <span aria-hidden="true">{running ? '一時停止' : elapsed > 0 ? '再開' : 'スタート'}</span>
                 </button>
+              )}
+              {timerError && (
+                <div className="timer-feedback" role="alert">
+                  <p>{timerError}</p>
+                  <button type="button" className="btn ghost" onClick={onRetryTimer} disabled={timerBusy}>再試行</button>
+                </div>
               )}
             </div>
           </div>

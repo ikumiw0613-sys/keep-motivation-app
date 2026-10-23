@@ -1,3 +1,5 @@
+import { calendarDate } from './calendarDate'
+
 /**
  * ゲームのルール。**ここには「記録から計算するやり方」だけを置く。**
  *
@@ -97,7 +99,7 @@ export const addMonths = (d: Date, n: number) => {
   return x
 }
 
-export const today = (s: State) => shift(new Date(), s.dayOffset)
+export const today = (s: State) => shift(parseKey(calendarDate()), s.dayOffset)
 
 export const isDone = (s: State, d: Date) => s.done.includes(key(d))
 

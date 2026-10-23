@@ -1,6 +1,6 @@
 -- keep-motivation-app のスキーマ（ARCHITECTURE 4章）
 --
--- **新しい Supabase プロジェクトに、このファイルを1本流すだけ。**
+-- **新しい Supabase プロジェクトでは、このファイルの後に timer_status.sql を実行する。**
 -- ALTER も DROP も無いので、旧プロジェクトには一切触れない。
 -- 切り替わるのは各自が .env を差し替えた瞬間（README 3章）。
 --

@@ -10,6 +10,7 @@ import {
   parseKey,
   runOf,
   shift,
+  today,
   type State,
 } from './logic'
 
@@ -32,7 +33,7 @@ describe('日付のものさし', () => {
  * ------------------------------------------------------------------ */
 
 /** 今日から n 日前の日付キー */
-const ago = (n: number) => key(shift(new Date(), -n))
+const ago = (n: number) => key(shift(today(initialState()), -n))
 
 /**
  * テスト用の State。`startedAt` は「n日前」で指定し、達成日も

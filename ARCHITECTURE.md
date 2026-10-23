@@ -97,6 +97,9 @@ src/
 │   ├── useAuth.ts                ログイン状態だけ。DB を知らない
 │   ├── useScreen.ts              画面遷移だけ
 │   ├── useTimer.ts               5分タイマーだけ
+│   ├── useDailyTimer.ts          タイマーの保存・復元・日付変更・通信状態
+│   ├── timerStorage.ts           タイマー更新用RPCの呼び出し
+│   ├── calendarDate.ts           全端末共通の日本時間の日付境界
 │   ├── useGoalState.ts           目標の状態管理と Supabase の読み書き
 │   ├── debug.ts                  **消す**操作。DebugPage だけが import する
 │   └── logic.ts                  ルールブック。サイクル・連続・気分・日付計算
@@ -288,8 +291,10 @@ flowchart LR
     G -->|積んだ日| R["records"]
 ```
 
-**DDL の原典は [`supabase/schema.sql`](./supabase/schema.sql)** です（新しいプロジェクトに
-1本流すだけで、この形になります）。以下はその要約。
+**DDL の原典は [`supabase/schema.sql`](./supabase/schema.sql) と
+[`supabase/timer_status.sql`](./supabase/timer_status.sql)** です。新しいプロジェクトでは
+この順に実行します。既存プロジェクトには `timer_status.sql` を追加で実行します。
+以下はその要約。
 
 ### `auth.users` — 持ち主（Supabase Auth）
 
@@ -412,20 +417,45 @@ DELETE 系は `state/debug.ts` に隔離してあります。`useGoalState` に�
 
 ### RLS（行レベルセキュリティ）
 
-anon key はブラウザに配られるので、**誰が何を読めるかを決めているのは RLS だけ**です。
-3テーブルとも有効にしてあり、ポリシーの形は2つしかありません。
+anon key はブラウザに配られるので、**アクセス範囲はDBの権限とRLSで制限**します。
+4テーブルとも有効にしてあり、ポリシーの形は2つしかありません。
 
 | テーブル | ポリシー | 条件 |
 | --- | --- | --- |
 | `goals` | `goals_own` | `auth.uid() = user_id` |
 | `avatars` | `avatars_own` | 親の `goals` が自分のものか（`EXISTS`） |
 | `records` | `records_own` | 同上 |
+| `timer_status` | `timer_status_own` | 同上。権限はSELECT / INSERT / UPDATEのみ |
 
 `FOR ALL` なので SELECT / INSERT / UPDATE / DELETE の全部に効きます。`USING` が既にある行、
 `WITH CHECK` が書こうとしている行の条件で、他人の `goal_id` を書き込まれないよう両方に同じ条件を置いています。
 
 JWT は `supabase.from(...)` に自動で付くので、アプリ側に `Authorization` を書く場所はありません。
 `useGoalState.ts` に残っている `.eq('user_id', ...)` はもう防御ではなく、自分の目標だけを引く絞り込みです。
+
+### 当日のタイマーを保存・復元する
+
+`timer_status` は `(goal_id, timer_on)` を主キーにし、確定した `accumulated_ms` と
+計測中の起点 `running_since`（停止中はNULL）を保存します。達成の有無は従来どおり
+`records` で管理し、タイマーだけの操作では達成を保存しません。
+
+- `useTimer` は時刻差による表示だけ、`useDailyTimer` は保存・復元と通信状態、
+  `timerStorage` は `timer_status_command` RPCの呼び出しを担当します。
+- 開始・停止・再開をDB内で処理し、`version` が一致した場合だけ更新します。
+  同じ目標への操作をロックして直列化し、`updated_at` と開始時刻はDBが設定します。
+- 毎秒は画面だけ更新します。再表示時と、表示中の30秒ごとにDBを読み直し、
+  他の端末での操作を反映します。「記録する」の直前にも読み直します。
+- 計測中にページを閉じても起点は残るため、同じ日の閉じていた時間も加算します。
+  一時停止中は加算せず、目標切り替え・新規作成画面への移動前には停止を保存します。
+- 日付の基準は全端末で日本時間です。午前0時で前日を区切り、新しい日は0秒・停止中に
+  戻します。閉じたまま日をまたいだ行は、次の読み込みで前日の午前0時までを確定します。
+- 読み込み・保存結果を確認できない間は操作を止め、再試行でDBの状態を復元します。
+  通信失敗を0秒として扱ったり、古い状態を無条件で上書きしたりしません。
+- デバッグ画面の5秒タイマーと日送りはローカルで動き、本番のタイマー状態を更新しません。
+  「記録する」は従来どおり達成記録に保存します。
+
+SQLの検証は [`supabase/tests/timer_status.sql`](./supabase/tests/timer_status.sql) を実行します。
+テスト用の目標・タイマーは最後にROLLBACKし、既存の目標・記録は更新しません。
 
 ### DBに保存していないもの
 
@@ -435,7 +465,8 @@ JWT は `supabase.from(...)` に自動で付くので、アプリ側に `Authori
 | --- | --- | --- |
 | `dayOffset` | デバッグ用の日送り | `0` に戻る |
 | `loaded` / `hasStarted` | 読み込み・開始状況 | hook 内で再設定 |
-| 画面・タイマーの状態 | 現在の画面、経過秒数 | 保存していない |
+| 画面の状態 | 現在の画面 | アカウントと目標から表示先を決める |
+| タイマーの表示秒数 | 保存した累積時間と開始時刻から計算 | DBから復元して再計算 |
 
 ---
 

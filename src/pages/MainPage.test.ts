@@ -80,6 +80,25 @@ it('starts a new goal from the popup without asking', async () => {
   expect(newGoal).toHaveBeenCalledOnce()
 })
 
+it('disables timer actions until restoration finishes and offers retry on failure', async () => {
+  const state = goal(1)
+  const retry = vi.fn()
+  const toggle = vi.fn()
+  await act(async () => root.render(createElement(MainPage, {
+    state, goals: [state], currentGoalId: 1, onSelectGoal: select,
+    session: 300, elapsed: 120, running: false, reached: false,
+    timerReady: false, timerError: 'タイマーを読み込めませんでした。', onRetryTimer: retry,
+    onToggleTimer: toggle, onFinishTimer: vi.fn(), onNewGoal: newGoal,
+    onEditGoal: vi.fn(), onExtend: vi.fn(), onStageSeen: vi.fn(),
+  })))
+  const timerButton = container.querySelector<HTMLButtonElement>('.stage-toggler')!
+  expect(timerButton.disabled).toBe(true)
+  expect(container.querySelector('[role="alert"]')?.textContent).toContain('読み込めませんでした')
+  await clickButton('再試行')
+  expect(retry).toHaveBeenCalledOnce()
+  expect(toggle).not.toHaveBeenCalled()
+})
+
 it('closes the list popup and returns to the dashboard', async () => {
   await render()
   await clickButton('目標')
