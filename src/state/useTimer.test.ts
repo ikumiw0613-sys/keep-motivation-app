@@ -38,7 +38,7 @@ it.each([300, 5])('keeps counting past %i seconds and records only on finish', a
   await act(async () => root.render(createElement(Harness, { seconds })))
   await act(async () => timer.toggle())
 
-  // 時間前の「完了」は効かない
+  // 時間前には記録を付けられない
   await tick(seconds - 1)
   await act(async () => timer.finish())
   expect(timer.reached).toBe(false)
@@ -52,24 +52,40 @@ it.each([300, 5])('keeps counting past %i seconds and records only on finish', a
   expect(timer.elapsed).toBe(seconds + 2)
   expect(onComplete).not.toHaveBeenCalled()
 
-  // 「完了」で止まって、記録は1回だけ
+  // 記録を付けても計測は続き、記録は1回だけ
   await act(async () => timer.finish())
-  expect(timer.running).toBe(false)
+  expect(timer.running).toBe(true)
   expect(onComplete).toHaveBeenCalledTimes(1)
+  await tick(3)
+  expect(timer.elapsed).toBe(seconds + 5)
 
-  // つけ終わったあとは、押しても動かない
+  // 記録後も一時停止・再開できる
   await act(async () => timer.toggle())
   await act(async () => timer.finish())
   await tick(3)
   expect(timer.running).toBe(false)
-  expect(timer.elapsed).toBe(seconds + 2)
+  expect(timer.elapsed).toBe(seconds + 5)
   expect(onComplete).toHaveBeenCalledTimes(1)
+  await act(async () => timer.toggle())
+  await tick(2)
+  expect(timer.running).toBe(true)
+  expect(timer.elapsed).toBe(seconds + 7)
+  await act(async () => timer.finish())
+  expect(onComplete).toHaveBeenCalledTimes(1)
+
+  // 記録後もバックグラウンドから戻ると経過時間が追いつく。
+  vi.setSystemTime(Date.now() + 30000)
+  await act(async () => window.dispatchEvent(new Event('focus')))
+  expect(timer.elapsed).toBe(seconds + 37)
 
   // 日をまたぐ等で reset されたら、また回せる
   await act(async () => timer.reset())
   await act(async () => timer.toggle())
   expect(timer.running).toBe(true)
   expect(timer.reached).toBe(false)
+  await tick(seconds)
+  await act(async () => timer.finish())
+  expect(onComplete).toHaveBeenCalledTimes(2)
 })
 
 // コールバックを動かさず時計だけ進め、バックグラウンドでの実行停止を再現する。
@@ -147,17 +163,17 @@ it('checks actual elapsed time when finishing before the display has updated', a
     timer.finish()
   })
   expect(timer.elapsed).toBe(5)
-  expect(timer.running).toBe(false)
+  expect(timer.running).toBe(true)
   expect(onComplete).toHaveBeenCalledTimes(1)
   await tick(3)
-  expect(timer.elapsed).toBe(5)
+  expect(timer.elapsed).toBe(8)
 })
 
-it.each(['reset', 'complete'] as const)('discards the running clock on %s', async (action) => {
+it('discards the running clock on reset', async () => {
   await act(async () => root.render(createElement(Harness, { seconds: 5 })))
   await act(async () => timer.toggle())
   vi.setSystemTime(Date.now() + 10000)
-  await act(async () => timer[action]())
+  await act(async () => timer.reset())
 
   await tick(3)
   await act(async () => {
@@ -172,6 +188,45 @@ it.each(['reset', 'complete'] as const)('discards the running clock on %s', asyn
 
   await act(async () => timer.toggle())
   await tick(1)
-  expect(timer.elapsed).toBe(action === 'reset' ? 1 : 0)
-  expect(timer.running).toBe(action === 'reset')
+  expect(timer.elapsed).toBe(1)
+  expect(timer.running).toBe(true)
+})
+
+it.each([false, true])('preserves the timer when recording directly (running = %s)', async (running) => {
+  await act(async () => root.render(createElement(Harness, { seconds: 5 })))
+  await act(async () => timer.toggle())
+  vi.setSystemTime(Date.now() + 2600)
+  if (!running) await act(async () => timer.toggle())
+  await act(async () => timer.complete())
+  expect(timer.elapsed).toBe(2)
+  expect(timer.running).toBe(running)
+
+  await tick(10)
+  expect(timer.elapsed).toBe(running ? 12 : 2)
+  await act(async () => timer.finish())
+  expect(onComplete).not.toHaveBeenCalled()
+
+  await act(async () => timer.toggle())
+  await tick(1)
+  expect(timer.running).toBe(!running)
+  expect(timer.elapsed).toBe(running ? 12 : 3)
+})
+
+it('preserves the paused timer when recording and allows resuming it', async () => {
+  await act(async () => root.render(createElement(Harness, { seconds: 5 })))
+  await act(async () => timer.toggle())
+  await tick(6)
+  await act(async () => timer.toggle())
+  await act(async () => timer.finish())
+  expect(timer.running).toBe(false)
+  expect(onComplete).toHaveBeenCalledTimes(1)
+  await tick(10)
+  expect(timer.elapsed).toBe(6)
+
+  await act(async () => timer.toggle())
+  await tick(2)
+  expect(timer.elapsed).toBe(8)
+  expect(timer.running).toBe(true)
+  await act(async () => timer.finish())
+  expect(onComplete).toHaveBeenCalledTimes(1)
 })

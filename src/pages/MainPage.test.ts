@@ -1,9 +1,10 @@
 // @vitest-environment jsdom
-import { act, createElement } from 'react'
+import { act, createElement, useState } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import MainPage from './MainPage'
-import { initialState, type State } from '../state/logic'
+import { initialState, key, today, type State } from '../state/logic'
+import { useTimer } from '../state/useTimer'
 
 vi.mock('../avatar/Avatar', () => ({ default: () => null }))
 vi.mock('../features/calendar/Calendar', () => ({ default: () => null }))
@@ -31,6 +32,7 @@ beforeEach(() => {
 
 afterEach(async () => {
   await act(async () => root.unmount())
+  vi.useRealTimers()
   container.remove()
   vi.restoreAllMocks()
   Reflect.deleteProperty(HTMLDialogElement.prototype, 'showModal')
@@ -92,4 +94,55 @@ it('closes the list popup and returns to the dashboard', async () => {
   await act(async () => dialog.dispatchEvent(new Event('cancel')))
   expect(dialog.open).toBe(false)
   expect(container.querySelector('.goal-list')).toBeNull()
+})
+
+function TimerHarness({ recorded = false }: { recorded?: boolean }) {
+  const [state, setState] = useState(() => {
+    const state = goal(1)
+    return recorded ? { ...state, done: [key(today(state))] } : state
+  })
+  const timer = useTimer(() => {
+    setState((state) => ({ ...state, done: [...state.done, key(today(state))] }))
+  }, 5)
+  return createElement(MainPage, {
+    state, goals: [state], currentGoalId: 1, onSelectGoal: select,
+    session: 5, elapsed: timer.elapsed, running: timer.running, reached: timer.reached,
+    onToggleTimer: timer.toggle, onFinishTimer: timer.finish,
+    onNewGoal: newGoal, onEditGoal: vi.fn(), onExtend: vi.fn(), onStageSeen: vi.fn(),
+  })
+}
+
+it('continues measuring after recording and offers pause and resume controls', async () => {
+  vi.useFakeTimers()
+  await act(async () => root.render(createElement(TimerHarness)))
+  await clickButton('スタート')
+  await act(async () => vi.advanceTimersByTime(6000))
+  await clickButton('記録する')
+  expect(container.querySelector('.timer-state')?.textContent).toBe('今日は記録ずみ')
+  expect(container.querySelector('.clock')?.textContent).toBe('0:06')
+  expect(container.querySelector('.stage-toggler.finish')).toBeNull()
+
+  await act(async () => vi.advanceTimersByTime(2000))
+  expect(container.querySelector('.clock')?.textContent).toBe('0:08')
+  await clickButton('一時停止')
+  await act(async () => vi.advanceTimersByTime(30000))
+  expect(container.querySelector('.clock')?.textContent).toBe('0:08')
+  await clickButton('再開')
+  await act(async () => vi.advanceTimersByTime(2000))
+  expect(container.querySelector('.clock')?.textContent).toBe('0:10')
+})
+
+it('can start a new timer on a recorded day and displays the actual elapsed time when paused', async () => {
+  vi.useFakeTimers()
+  await act(async () => root.render(createElement(TimerHarness, { recorded: true })))
+  expect(container.querySelector('.clock')?.textContent).toBe('0:00')
+  await clickButton('スタート')
+  await act(async () => vi.advanceTimersByTime(2000))
+  await clickButton('一時停止')
+  expect(container.querySelector('.clock')?.textContent).toBe('0:02')
+  await clickButton('再開')
+  await act(async () => vi.advanceTimersByTime(4000))
+  expect(container.querySelector('.clock')?.textContent).toBe('0:06')
+  expect(container.querySelector('.stage-toggler.finish')).toBeNull()
+  expect(container.querySelector<HTMLButtonElement>('.stage-toggler')?.disabled).toBe(false)
 })

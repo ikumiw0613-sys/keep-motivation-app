@@ -87,10 +87,10 @@ type Props = {
   session: number
   elapsed: number
   running: boolean
-  /** 時間を過ぎた。ボタンが「完了」に変わる */
+  /** 時間を過ぎた。未記録なら「記録する」を表示する */
   reached: boolean
   onToggleTimer: () => void
-  /** 「完了」。ここで今日の記録が付く */
+  /** 今日の記録を付ける。計測は続ける */
   onFinishTimer: () => void
   onNewGoal: () => void
   /** 目標の修正画面を開く */
@@ -121,11 +121,6 @@ export default function MainPage({
 }: Props) {
   const t = today(state)
   const doneToday = isDone(state, t)
-  // **今日つけ終わったら、タイマーはもう回さない。** 時間を過ぎると「完了」が出て、
-  // 押すと止まって記録が付く。そのあとは「今日は達成」に置き換える。
-  // 読み込み直した直後（elapsed が 0）でも、記録があれば輪は満タンで見せる
-  const finished = doneToday && !running
-  const shown = finished ? Math.max(elapsed, session) : elapsed
   // 気分もステージも保存していない。**記録とサイクル長から毎回その場で計算する**
   const stage = evolutionOf(state.done, state.cycleDays, startOf(state), key(t))
   // **気分はステージ1以上のもの。** たまごに気分は無い
@@ -327,23 +322,18 @@ export default function MainPage({
                     cy="60"
                     r="50"
                     strokeDasharray={DASH}
-                    strokeDashoffset={(DASH * (1 - Math.min(shown / session, 1))).toFixed(1)}
+                    strokeDashoffset={(DASH * (1 - Math.min(elapsed / session, 1))).toFixed(1)}
                   />
                 </svg>
                 <div className="num">
-                  <span className="clock">{fmtClock(shown)}</span>
+                  <span className="clock">{fmtClock(elapsed)}</span>
                   <em>/ {fmtClock(session)}</em>
                 </div>
               </div>
-              {finished ? (
-                <button type="button" className="stage-toggler done" disabled>
-                  <span aria-hidden="true" className="toggler-icon"><CheckIcon /></span>
-                  今日は達成
-                </button>
-              ) : reached ? (
+              {reached && !doneToday ? (
                 <button type="button" className="stage-toggler finish" onClick={onFinishTimer}>
                   <span aria-hidden="true" className="toggler-icon"><CheckIcon /></span>
-                  完了
+                  記録する
                 </button>
               ) : (
                 <button

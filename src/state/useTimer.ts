@@ -2,10 +2,10 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 
 /**
  * 5分タイマーだけを担当する。達成の保存は持たず、
- * `seconds` を過ぎてから `finish()`（「完了」ボタン）が押されたら `onComplete` を1回だけ呼ぶ。
+ * `seconds` を過ぎてから `finish()`（「記録する」ボタン）が押されたら `onComplete` を1回だけ呼ぶ。
  *
- * **時間になっても勝手には止めない。** 5分を過ぎても数え続け、区切りは本人が
- * 「完了」で付ける。乗っているところで切られないように、また「押した＝やった」がはっきりするように。
+ * **時間になっても記録を付けても止めない。** 記録後も計測を続けられる。
+ * 一時停止・再開は記録の有無にかかわらず操作できる。
  *
  * **長さは引数で受け取るだけで、動きは長さによらず同じ。** 本番は300秒、
  * デバッグ画面は5秒を渡す（useApp）。デバッグ画面で5秒回して確かめたことは、
@@ -14,7 +14,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 export function useTimer(onComplete: () => void, seconds: number) {
   const [elapsed, setElapsed] = useState(0)
   const [running, setRunning] = useState(false)
-  const doneRef = useRef(false)
+  const recordedRef = useRef(false)
   const accumulatedMsRef = useRef(0)
   const startedAtRef = useRef<number | null>(null)
 
@@ -42,24 +42,20 @@ export function useTimer(onComplete: () => void, seconds: number) {
     }
   }, [running, syncElapsed])
 
-  /** 時間を過ぎた。ここから「完了」を押せる */
+  /** 時間を過ぎた。ここから記録を付けられる */
   const reached = elapsed >= seconds
 
-  /** 「完了」。時間を過ぎる前・つけ終わったあとは何もしない */
+  /** 達成を記録する。計測はそのまま続け、重複して記録しない */
   const finish = () => {
-    if (doneRef.current) return
+    if (recordedRef.current) return
     const elapsedMs = syncElapsed()
     if (elapsedMs < seconds * 1000) return
-    accumulatedMsRef.current = elapsedMs
-    startedAtRef.current = null
-    doneRef.current = true
-    setRunning(false)
+    recordedRef.current = true
     onComplete()
   }
 
-  /** 終わったタイマーは動かさない。次に回せるのは reset（日をまたぐ等）のあと */
+  /** 記録後も一時停止・再開できる */
   const toggle = () => {
-    if (doneRef.current) return
     if (startedAtRef.current === null) {
       startedAtRef.current = Date.now()
       setRunning(true)
@@ -77,16 +73,13 @@ export function useTimer(onComplete: () => void, seconds: number) {
     startedAtRef.current = null
     setRunning(false)
     setElapsed(0)
-    doneRef.current = false
+    recordedRef.current = false
   }
 
-  /** タイマーを使わずに達成扱いにする（「もうやった」ボタン用） */
+  /** 達成扱いにする。計測中なら経過時間と実行状態を保つ（「もうやった」ボタン用） */
   const complete = () => {
-    accumulatedMsRef.current = 0
-    startedAtRef.current = null
-    setRunning(false)
-    setElapsed(0)
-    doneRef.current = true
+    syncElapsed()
+    recordedRef.current = true
   }
 
   return { elapsed, running, reached, toggle, finish, reset, complete }
