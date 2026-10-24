@@ -1,4 +1,4 @@
-import { useState, type CSSProperties } from 'react'
+import { useRef, useState, type CSSProperties } from 'react'
 import Avatar from '../avatar/Avatar'
 import './setup-page.css'
 import {
@@ -14,7 +14,7 @@ import {
 
 type Props = {
   state: State
-  onStart: (input: SetupInput) => void
+  onStart: (input: SetupInput) => void | boolean | Promise<void | boolean>
   /** 前の目標へ戻る。初めての目標づくりでは戻り先が無いので null */
   onBack: (() => void) | null
   /**
@@ -22,6 +22,8 @@ type Props = {
    * **ペースだけは変えられない**（見せるだけ）
    */
   editing?: boolean
+  saving?: boolean
+  saveError?: string | null
 }
 
 const PRESETS = [
@@ -34,12 +36,16 @@ const PRESETS = [
 /** 見本のアバター。**気分は「いきいき」で固定**。色で選べるように一番のびのびした姿を出す */
 const SAMPLE_MOOD = MOODS.find((m) => m.id === 'lively') ?? null
 
-export default function SetupPage({ state, onStart, onBack, editing = false }: Props) {
+export default function SetupPage({ state, onStart, onBack, editing = false, saving = false, saveError }: Props) {
   const [draft, setDraft] = useState(state.goal)
   const [deadline, setDeadline] = useState(state.deadline ?? '')
   const [cycleDays, setCycleDays] = useState(state.cycleDays || 1)
   const [hue, setHue] = useState(state.hue)
   const [name, setName] = useState(state.name)
+  const submitting = useRef(false)
+  const [pending, setPending] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const busy = pending || saving
 
   const todayKey = key(new Date())
   const daysTo = deadline
@@ -49,15 +55,31 @@ export default function SetupPage({ state, onStart, onBack, editing = false }: P
   // 名前は必須。アバター3種が無くなったので、既定値の出どころが無い
   const ready = draft.trim().length > 0 && deadline.length > 0 && name.trim().length > 0
 
-  const submit = () => {
-    if (!ready) return
-    onStart({ goal: draft.trim(), deadline, cycleDays, hue, name: name.trim() })
+  const submit = async () => {
+    if (!ready || busy || submitting.current) return
+    if (deadline < todayKey && !editing) {
+      setError('期限は今日以降の日付を選んでください。')
+      return
+    }
+    submitting.current = true
+    setPending(true)
+    setError(null)
+    try {
+      if (await onStart({ goal: draft.trim(), deadline, cycleDays, hue, name: name.trim() }) === false) {
+        setError('保存できませんでした。接続を確認して、もう一度保存してください。')
+      }
+    } catch {
+      setError('保存できませんでした。接続を確認して、もう一度保存してください。')
+    } finally {
+      submitting.current = false
+      setPending(false)
+    }
   }
 
   return (
     <div className="wrap setup">
       {onBack && (
-        <button type="button" className="setup-back" onClick={onBack}>
+        <button type="button" className="setup-back" onClick={onBack} disabled={busy}>
           <svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor"
             strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
             <path d="M15 5l-7 7 7 7" />
@@ -82,7 +104,8 @@ export default function SetupPage({ state, onStart, onBack, editing = false }: P
       </header>
 
       {/* 選んだアバターの色をカードに持たせる。始めるボタンや入力欄の枠がその色になる */}
-      <section className="card setup-card" style={{ '--h': hue } as CSSProperties}>
+      <section className="card setup-card" style={{ '--h': hue } as CSSProperties} aria-busy={busy}>
+        <fieldset className="setup-fields" disabled={busy}>
         {/* 項目は「目標」と「アバター」の2つに分ける。何を決めている欄かを見出しで先に伝える */}
         <section className="setup-group" aria-labelledby="setup-group-goal">
         <h2 className="setup-group-title" id="setup-group-goal">目標</h2>
@@ -99,7 +122,7 @@ export default function SetupPage({ state, onStart, onBack, editing = false }: P
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
             onKeyDown={(e) => {
-              if (e.key === 'Enter') submit()
+              if (e.key === 'Enter' && !e.nativeEvent.isComposing) void submit()
             }}
           />
         </div>
@@ -205,8 +228,10 @@ export default function SetupPage({ state, onStart, onBack, editing = false }: P
         </div>
         </section>
 
-        <button type="button" className="btn top-btn" onClick={submit} disabled={!ready}>
-          {editing ? 'この内容で保存する' : 'この目標で始める'}
+        </fieldset>
+        {(saveError || error) && <p className="login-error" role="alert">{saveError || error}</p>}
+        <button type="button" className="btn top-btn" onClick={submit} disabled={!ready || busy}>
+          {busy ? '保存中…' : editing ? 'この内容で保存する' : 'この目標で始める'}
         </button>
       </section>
     </div>

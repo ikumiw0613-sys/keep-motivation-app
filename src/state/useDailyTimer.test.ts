@@ -45,7 +45,7 @@ beforeEach(() => {
   vi.setSystemTime(new Date('2026-10-23T01:00:00Z'))
   storage.readTimer.mockReset().mockImplementation(async (goalId: number) => reply({ goal_id: goalId }))
   storage.setTimerRunning.mockReset()
-  complete.mockClear()
+  complete.mockReset()
   container = document.createElement('div')
   root = createRoot(container)
 })
@@ -64,6 +64,25 @@ it('restores a paused timer without counting time spent away', async () => {
   await tick(10000)
   expect(timer.elapsed).toBe(120)
   expect(storage.setTimerRunning).not.toHaveBeenCalled()
+})
+
+it('keeps recording available after a failed achievement save', async () => {
+  storage.readTimer.mockResolvedValue(reply({ accumulated_ms: 300000 }))
+  let resolve!: (success: boolean) => void
+  complete.mockReturnValueOnce(new Promise<boolean>((done) => { resolve = done })).mockResolvedValueOnce(true)
+  await render()
+  let operation!: ReturnType<typeof timer.finish>
+  await act(async () => { operation = timer.finish() })
+  expect(timer.busy).toBe(true)
+  await act(async () => { void timer.finish() })
+  expect(complete).toHaveBeenCalledOnce()
+  await act(async () => { resolve(false); await operation })
+  expect(timer.busy).toBe(false)
+  expect(timer.error).toContain('記録を保存できませんでした')
+  expect(timer.reached).toBe(true)
+  await act(async () => timer.finish())
+  expect(complete).toHaveBeenCalledTimes(2)
+  expect(timer.error).toBeNull()
 })
 
 it('restores a running timer across a browser refresh including time spent closed', async () => {

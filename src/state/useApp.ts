@@ -85,7 +85,9 @@ export function useApp() {
     if (await goal.start(input) && currentUserId.current === userId) {
       setReturnGoalId(null)
       setScreen('main')
+      return true
     }
+    return false
   }
 
   const reset = () => afterPause(() => {
@@ -101,9 +103,8 @@ export function useApp() {
     setScreen('main')
   })
 
-  const recordOnly = () => {
-    timer.complete()
-    goal.markSessionDone()
+  const recordOnly = async () => {
+    if (await goal.markSessionDone()) timer.complete()
   }
 
   const nextDay = () => {
@@ -139,7 +140,9 @@ export function useApp() {
   const saveGoal = async (input: GoalEdit) => {
     if (await goal.updateGoal(input) && currentUserId.current === userId) {
       setScreen('main')
+      return true
     }
+    return false
   }
 
   /** 修正をやめる。何も書いていないので、ダッシュボードへ戻るだけ */
@@ -163,6 +166,10 @@ export function useApp() {
     signIn: auth.signIn,
     signUp: auth.signUp,
     signInWithGoogle: auth.signInWithGoogle,
+    recovering: auth.recovering,
+    requestPasswordReset: auth.requestPasswordReset,
+    resendConfirmation: auth.resendConfirmation,
+    updatePassword: auth.updatePassword,
     signOut,
     state: goal.state,
     goals: goal.goals,
@@ -170,6 +177,8 @@ export function useApp() {
     loaded: goal.loaded && routedUserId === userId,
     loadError: goal.loadError,
     retryLoad: goal.retryLoad,
+    savingGoal: goal.saving,
+    goalSaveError: goal.saveError,
     hasStarted: goal.hasStarted,
     hasCurrentGoal,
     tutorialCompleted,

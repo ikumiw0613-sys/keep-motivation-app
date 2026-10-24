@@ -4,7 +4,7 @@ import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { useGoalState } from './useGoalState'
 
-const database = vi.hoisted(() => ({ from: vi.fn() }))
+const database = vi.hoisted(() => ({ from: vi.fn(), rpc: vi.fn() }))
 vi.mock('../lib/supabase', () => ({ supabase: database }))
 
 type Reply = { data: unknown; error: { message: string } | null }
@@ -85,6 +85,7 @@ beforeEach(() => {
   reads.length = 0
   snapshots.length = 0
   database.from.mockReset()
+  database.rpc.mockReset()
   database.from.mockImplementation((table: string) => {
     const plan = plans.shift()
     expect(plan?.table).toBe(table)
@@ -293,166 +294,108 @@ describe('useGoalState loading', () => {
   })
 })
 
-describe('useGoalState account changes during goal creation', () => {
-  it.each(['goal', 'avatar'] as const)('stops after a pending %s write when the account changes', async (pendingStage) => {
+const setupInput = { goal: 'Read daily', deadline: '2027-12-31', cycleDays: 1, name: 'Bird', hue: 150 }
+
+describe('transactional goal saves', () => {
+  it('ignores a previous account response during creation', async () => {
     enqueueGoal(1)
     await render('account-a')
-
     const pending = deferred()
-    const stages = [
-      { stage: 'goal', table: 'goals', method: 'insert', reply: ok({ id: 10 }) },
-      { stage: 'avatar', table: 'avatars', method: 'insert', reply: ok(null) },
-    ]
-    const pendingIndex = stages.findIndex(({ stage }) => stage === pendingStage)
-    for (const [index, stage] of stages.slice(0, pendingIndex + 1).entries()) {
-      // These are entirely mocked writes; other tests still only permit SELECT.
-      database.from.mockImplementationOnce((table: string) => {
-        expect(table).toBe(stage.table)
-        const result = index === pendingIndex ? pending.promise : Promise.resolve(stage.reply)
-        const query = {
-          select: () => query,
-          single: () => result,
-          then: (resolve: (reply: Reply) => unknown, reject: (error: unknown) => unknown) => result.then(resolve, reject),
-        }
-        return { [stage.method]: () => query }
-      })
-    }
+    database.rpc.mockReturnValueOnce(pending.promise)
+    let operation!: Promise<boolean>
+    await act(async () => { operation = current.start(setupInput) })
+    enqueue('goals', ok([]))
+    await render('account-b')
+    await act(async () => {
+      pending.resolve(ok({ id: 10, started_at: '2026-10-24' }))
+      expect(await operation).toBe(false)
+    })
+    expect(current.goals).toEqual([])
+    expect(current.saving).toBe(false)
+    expect(current.saveError).toBeNull()
+  })
 
+  it('serializes clicks and reuses the request ID after a lost response', async () => {
+    enqueueGoal(1)
+    await render('account-a')
+    const pending = deferred()
+    database.rpc.mockReturnValueOnce(pending.promise).mockResolvedValueOnce(ok({ id: 2, started_at: '2026-10-24' }))
     let operation!: Promise<boolean>
     await act(async () => {
-      operation = current.start({
-        goal: 'New goal for A', deadline: '2026-12-31', cycleDays: 1, name: 'A avatar', hue: 120,
-      })
+      operation = current.start(setupInput)
+      expect(await current.start(setupInput)).toBe(false)
     })
-    enqueue('goals', ok(null))
+    expect(current.saving).toBe(true)
+    expect(database.rpc).toHaveBeenCalledOnce()
+    await act(async () => {
+      pending.resolve(failed)
+      expect(await operation).toBe(false)
+    })
+    expect(current.state.goalId).toBe(1)
+    expect(current.saveError).toContain('保存できませんでした')
+    await act(async () => { expect(await current.start(setupInput)).toBe(true) })
+    expect(database.rpc.mock.calls[0][1].p_request_id).toBe(database.rpc.mock.calls[1][1].p_request_id)
+    expect(current.goals.map((goal) => goal.goalId)).toEqual([2, 1])
+    expect(current.state.startedAt).toBe('2026-10-24')
+    expect(current.saveError).toBeNull()
+    expect(current.saving).toBe(false)
+    expect(database.from).toHaveBeenCalledTimes(2)
+  })
+
+  it.each([false, true])('only changes goal and avatar together after save (failed = %s)', async (failure) => {
+    enqueueGoal(1)
+    await render('account-a')
+    database.rpc.mockResolvedValueOnce(failure ? failed : ok(null))
+    const input = { goal: 'New goal', deadline: '2027-12-31', name: 'New name', hue: 205 }
+    await act(async () => { expect(await current.updateGoal(input)).toBe(!failure) })
+    expect(database.rpc).toHaveBeenCalledExactlyOnceWith('update_goal_with_avatar', {
+      p_goal_id: 1, p_goal: input.goal, p_deadline: input.deadline, p_name: input.name, p_hue: input.hue,
+    })
+    expect(current.state).toMatchObject({ goal: failure ? 'Goal 1' : 'New goal', name: failure ? 'Avatar 1' : 'New name',
+      cycleDays: 3, seenStage: 1, done: ['2026-09-02'] })
+    expect(current.saveError === null).toBe(!failure)
+  })
+})
+
+describe('achievement persistence', () => {
+  it('does not claim success before saving, retries a failure, and deduplicates clicks', async () => {
+    enqueueGoal(1)
+    await render('account-a')
+    const pending = deferred()
+    const insert = vi.fn().mockReturnValueOnce(pending.promise).mockResolvedValueOnce(ok(null))
+    database.from.mockImplementation(() => ({ insert }))
+    let operation!: Promise<boolean>
+    await act(async () => {
+      operation = current.markSessionDone('2026-10-24')
+      expect(current.markSessionDone('2026-10-24')).toBe(operation)
+    })
+    expect(insert).toHaveBeenCalledOnce()
+    expect(current.state.done).not.toContain('2026-10-24')
+    await act(async () => { pending.resolve(failed); expect(await operation).toBe(false) })
+    expect(current.state.done).not.toContain('2026-10-24')
+    await act(async () => { expect(await current.markSessionDone('2026-10-24')).toBe(true) })
+    expect(current.state.done).toContain('2026-10-24')
+    expect(insert).toHaveBeenCalledTimes(2)
+  })
+
+  it('accepts a duplicate stored day after a lost response', async () => {
+    enqueueGoal(1)
+    await render('account-a')
+    database.from.mockImplementationOnce(() => ({ insert: async () => ({ error: { code: '23505' } }) }))
+    await act(async () => { expect(await current.markSessionDone('2026-10-24')).toBe(true) })
+    expect(current.state.done).toContain('2026-10-24')
+  })
+
+  it('does not apply a previous account achievement response', async () => {
+    enqueueGoal(1)
+    await render('account-a')
+    const pending = deferred()
+    database.from.mockImplementationOnce(() => ({ insert: () => pending.promise }))
+    let operation!: Promise<boolean>
+    await act(async () => { operation = current.markSessionDone('2026-10-24') })
+    enqueueGoal(2)
     await render('account-b')
-    const accountBState = current.state
-    const callsBeforeCompletion = database.from.mock.calls.length
-
-    let created: boolean | undefined
-    await act(async () => {
-      pending.resolve(stages[pendingIndex].reply)
-      created = await operation
-    })
-
-    expect(created).toBe(false)
-    expect(database.from).toHaveBeenCalledTimes(callsBeforeCompletion)
-    expect(current.loaded).toBe(true)
-    expect(current.state).toEqual(accountBState)
-    expect(current.state.goalId).toBeNull()
-    expect(current.hasStarted).toBe(false)
-    expect(current.hasGoalHistory).toBe(false)
-  })
-})
-
-describe('useGoalState goal creation without schema changes', () => {
-  it('inserts only a goal and avatar, retains the previous data, and reloads the latest goal', async () => {
-    const originalGoal = goalRow(1)
-    const storedGoals = [originalGoal]
-    const storedRecords = [{ goal_id: 1, done_on: '2026-09-02' }]
-    enqueue('goals', ok(originalGoal))
-    enqueue('records', ok(storedRecords))
-    await render('account-a')
-
-    const writes: { table: string; values: Record<string, unknown> }[] = []
-    database.from.mockImplementationOnce((table: string) => {
-      expect(table).toBe('goals')
-      return {
-        insert: (values: Record<string, unknown>) => {
-          writes.push({ table, values })
-          storedGoals.push({ ...goalRow(2), ...values })
-          return { select: () => ({ single: async () => ok({ id: 2 }) }) }
-        },
-      }
-    })
-    database.from.mockImplementationOnce((table: string) => {
-      expect(table).toBe('avatars')
-      return {
-        insert: async (values: Record<string, unknown>) => {
-          writes.push({ table, values })
-          return ok(null)
-        },
-      }
-    })
-
-    let created: boolean | undefined
-    await act(async () => {
-      created = await current.start({
-        goal: 'A newer goal', deadline: '2026-12-31', cycleDays: 1, name: 'New avatar', hue: 150,
-      })
-    })
-    expect(created).toBe(true)
-    expect(writes.map(({ table }) => table)).toEqual(['goals', 'avatars'])
-    expect(writes[0].values).toMatchObject({ user_id: 'account-a', goal: 'A newer goal' })
-    expect(writes[1].values).toEqual({ goal_id: 2, name: 'New avatar', hue: 150 })
-    expect(storedGoals[0]).toBe(originalGoal)
-    expect(storedRecords).toEqual([{ goal_id: 1, done_on: '2026-09-02' }])
-    expect(current.state.goalId).toBe(2)
-
-    enqueue('goals', ok({ ...storedGoals[1], avatars: [{ name: 'New avatar', hue: 150, seen_stage: 0 }] }))
-    enqueue('records', ok([]))
-    await act(async () => current.retryLoad())
-    expect(reads[2].filters).toEqual([['eq', 'user_id', 'account-a']])
-    expect(reads[2].orders).toEqual([{ column: 'id', ascending: false }])
-    expect(reads[2].maxRows).toBeNull()
-    expect(current.loaded).toBe(true)
-    expect(current.state).toMatchObject({ goalId: 2, goal: 'A newer goal', name: 'New avatar', done: [] })
-    expect(current.hasStarted).toBe(true)
-    expect(current.hasGoalHistory).toBe(true)
-    expect(storedRecords).toEqual([{ goal_id: 1, done_on: '2026-09-02' }])
-  })
-})
-
-describe('useGoalState goal editing', () => {
-  it('updates the goal and avatar of the open goal but keeps its pace and records', async () => {
-    enqueueGoal(1)
-    await render('account-a')
-
-    const writes: { table: string; values: Record<string, unknown>; filter: [string, unknown] }[] = []
-    for (const table of ['goals', 'avatars']) {
-      database.from.mockImplementationOnce((name: string) => {
-        expect(name).toBe(table)
-        return {
-          update: (values: Record<string, unknown>) => ({
-            eq: async (column: string, value: unknown) => {
-              writes.push({ table, values, filter: [column, value] })
-              return ok(null)
-            },
-          }),
-        }
-      })
-    }
-
-    let saved: boolean | undefined
-    await act(async () => {
-      saved = await current.updateGoal({ goal: 'Renamed', deadline: '2027-03-31', name: 'New name', hue: 205 })
-    })
-
-    expect(saved).toBe(true)
-    expect(writes).toEqual([
-      { table: 'goals', values: { goal: 'Renamed', deadline: '2027-03-31' }, filter: ['id', 1] },
-      { table: 'avatars', values: { name: 'New name', hue: 205 }, filter: ['goal_id', 1] },
-    ])
-    expect(current.state).toMatchObject({
-      goalId: 1, goal: 'Renamed', deadline: '2027-03-31', name: 'New name', hue: 205,
-      cycleDays: 3, seenStage: 1, done: ['2026-09-02'],
-    })
-  })
-
-  it('reports failure and leaves the goal as it was when the goal update fails', async () => {
-    enqueueGoal(1)
-    await render('account-a')
-
-    database.from.mockImplementationOnce(() => ({
-      update: () => ({ eq: async () => failed }),
-    }))
-
-    let saved: boolean | undefined
-    await act(async () => {
-      saved = await current.updateGoal({ goal: 'Renamed', deadline: '2027-03-31', name: 'New name', hue: 205 })
-    })
-
-    expect(saved).toBe(false)
-    expect(current.state).toMatchObject({ goal: 'Goal 1', deadline: '2026-12-31', name: 'Avatar 1', hue: 120 })
+    await act(async () => { pending.resolve(ok(null)); expect(await operation).toBe(false) })
+    expect(current.state.done).toEqual(['2026-09-02'])
   })
 })

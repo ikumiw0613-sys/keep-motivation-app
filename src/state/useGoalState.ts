@@ -150,6 +150,11 @@ export function useGoalState(userId: string | null) {
   const [loadedUserId, setLoadedUserId] = useState<string | null>(null)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [loadAttempt, setLoadAttempt] = useState(0)
+  const [saving, setSaving] = useState(false)
+  const [saveError, setSaveError] = useState<string | null>(null)
+  const mutation = useRef<object | null>(null)
+  const creation = useRef<{ userId: string; input: string; requestId: string } | null>(null)
+  const recordSaves = useRef(new Map<string, Promise<boolean>>())
   const currentUserId = useRef(userId)
   currentUserId.current = userId
 
@@ -192,6 +197,10 @@ export function useGoalState(userId: string | null) {
     setHasGoalHistory(false)
     setLoadedUserId(null)
     setLoadError(null)
+    mutation.current = null
+    creation.current = null
+    setSaving(false)
+    setSaveError(null)
   }, [userId])
 
   /**
@@ -251,63 +260,59 @@ export function useGoalState(userId: string | null) {
   )
 
   /**
-   * 目標を作る。`goals` → `avatars` の2回。片方だけ成功する余地は残っている。
+   * 目標とアバターをDB内の1トランザクションで作る。同じ入力の再送は同じ目標を返す。
    *
    * **前の目標には何もしません。** 行を足すだけで、記録もアバターもそのまま残り、
    * 目標一覧から行き来できます。作った直後はその新しい目標が開きます。
    */
   const start = async (input: SetupInput) => {
-    if (!userId) return false
-    const startedAt = key(today(initialState()))
-
-    const { data, error } = await supabase
-      .from('goals')
-      .insert({
-        user_id: userId,
+    if (!userId || mutation.current) return false
+    const operation = {}
+    mutation.current = operation
+    setSaving(true)
+    setSaveError(null)
+    try {
+      const serialized = JSON.stringify(input)
+      if (creation.current?.userId !== userId || creation.current.input !== serialized) {
+        creation.current = { userId, input: serialized, requestId: crypto.randomUUID() }
+      }
+      const { data, error } = await supabase.rpc('create_goal_with_avatar', {
+        p_request_id: creation.current.requestId,
+        p_goal: input.goal, p_deadline: input.deadline, p_cycle_days: input.cycleDays,
+        p_name: input.name, p_hue: input.hue,
+      })
+      if (error || !data) throw error ?? new Error('No created goal')
+      if (currentUserId.current !== userId) return false
+      const created: State = {
+        ...initialState(),
+        goalId: data.id,
         goal: input.goal,
         deadline: input.deadline,
-        cycle_days: input.cycleDays,
-        started_at: startedAt,
-      })
-      .select('id')
-      .single()
+        cycleDays: input.cycleDays,
+        startedAt: data.started_at,
+        hue: input.hue,
+        name: input.name,
+        seenStage: 0,
+        done: [],
+      }
 
-    if (currentUserId.current !== userId) return false
-    if (error) {
+      setGoals((gs) => [created, ...gs.filter((g) => g.goalId !== data.id)])
+      setCurrentId(data.id)
+      setDraft(null)
+      setHasStarted(true)
+      setHasGoalHistory(true)
+      writeCurrentId(userId, data.id)
+      return true
+    } catch (error) {
       console.error('目標作成エラー:', error)
+      if (currentUserId.current === userId) setSaveError('目標を保存できませんでした。接続を確認して、もう一度保存してください。')
       return false
+    } finally {
+      if (mutation.current === operation) {
+        mutation.current = null
+        setSaving(false)
+      }
     }
-
-    const { error: avatarError } = await supabase
-      .from('avatars')
-      .insert({ goal_id: data.id, name: input.name, hue: input.hue })
-
-    if (currentUserId.current !== userId) return false
-    if (avatarError) {
-      console.error('アバター作成エラー:', avatarError)
-      return false
-    }
-
-    const created: State = {
-      ...initialState(),
-      goalId: data.id,
-      goal: input.goal,
-      deadline: input.deadline,
-      cycleDays: input.cycleDays,
-      startedAt,
-      hue: input.hue,
-      name: input.name,
-      seenStage: 0,
-      done: [],
-    }
-
-    setGoals((gs) => [created, ...gs])
-    setCurrentId(data.id)
-    setDraft(null)
-    setHasStarted(true)
-    setHasGoalHistory(true)
-    writeCurrentId(userId, data.id)
-    return true
   }
 
   /** 表示だけ初期状態へ戻す。**DB には触らない**（目標も記録も残る） */
@@ -318,21 +323,35 @@ export function useGoalState(userId: string | null) {
   }
 
   /** 今日を達成にする。`records` に1行 INSERT するだけ（同日は UNIQUE が弾く） */
-  const markSessionDone = async (day?: string) => {
+  const markSessionDone = (day?: string): Promise<boolean> => {
     const s = latest.current
     // タイマー経由ではDBが判定した日付を使い、端末の時計がずれても日付を揃える。
     const doneOn = day ?? key(today(s))
-    if (s.done.includes(doneOn)) return
-    if (s.goalId === null) return
-
-    patch(s.goalId, (g) => (g.done.includes(doneOn) ? g : { ...g, done: [...g.done, doneOn] }))
-
-    const { error } = await supabase
-      .from('records')
-      .insert({ goal_id: s.goalId, done_on: doneOn, minutes: SESSION_MINUTES })
-
-    // 同じ日を2回つけたときの一意制約違反は、記録としては正しい状態なので流す
-    if (error && error.code !== '23505') console.error('記録の保存エラー:', error)
+    if (s.done.includes(doneOn)) return Promise.resolve(true)
+    if (!userId || s.goalId === null) return Promise.resolve(false)
+    const id = s.goalId
+    const scope = `${userId}:${id}:${doneOn}`
+    const pending = recordSaves.current.get(scope)
+    if (pending) return pending
+    const save = async () => {
+      try {
+        const { error } = await supabase.from('records')
+          .insert({ goal_id: id, done_on: doneOn, minutes: SESSION_MINUTES })
+        // 応答が失われた後の再試行など、既存の同日記録は成功として扱う。
+        if (error && error.code !== '23505') throw error
+        if (currentUserId.current !== userId) return false
+        patch(id, (g) => g.done.includes(doneOn) ? g : { ...g, done: [...g.done, doneOn] })
+        return true
+      } catch (error) {
+        console.error('記録の保存エラー:', error)
+        return false
+      } finally {
+        recordSaves.current.delete(scope)
+      }
+    }
+    const promise = Promise.resolve().then(save)
+    recordSaves.current.set(scope, promise)
+    return promise
   }
 
   /** 進化の演出を流し終わった（README 2章） */
@@ -380,41 +399,37 @@ export function useGoalState(userId: string | null) {
   }
 
   /**
-   * 開いている目標を直す。`goals`（目標・期限）→ `avatars`（名前・色）の2回。
+   * 開いている目標とアバターを1トランザクションで直す。
    * **ペース（`cycle_days`）は変えない。** 変えると過去の記録の数え方まで変わってしまう（README 2章）。
    * 記録も進化の演出の進みもそのまま。
    */
   const updateGoal = async (input: GoalEdit) => {
     const s = latest.current
-    if (!userId || s.goalId === null) return false
+    if (!userId || s.goalId === null || mutation.current) return false
     const id = s.goalId
-
-    const { error } = await supabase
-      .from('goals')
-      .update({ goal: input.goal, deadline: input.deadline })
-      .eq('id', id)
-
-    if (currentUserId.current !== userId) return false
-    if (error) {
+    const operation = {}
+    mutation.current = operation
+    setSaving(true)
+    setSaveError(null)
+    try {
+      const { error } = await supabase.rpc('update_goal_with_avatar', {
+        p_goal_id: id, p_goal: input.goal, p_deadline: input.deadline,
+        p_name: input.name, p_hue: input.hue,
+      })
+      if (error) throw error
+      if (currentUserId.current !== userId) return false
+      patch(id, (g) => ({ ...g, ...input }))
+      return true
+    } catch (error) {
       console.error('目標更新エラー:', error)
+      if (currentUserId.current === userId) setSaveError('変更を保存できませんでした。接続を確認して、もう一度保存してください。')
       return false
+    } finally {
+      if (mutation.current === operation) {
+        mutation.current = null
+        setSaving(false)
+      }
     }
-
-    const { error: avatarError } = await supabase
-      .from('avatars')
-      .update({ name: input.name, hue: input.hue })
-      .eq('goal_id', id)
-
-    if (currentUserId.current !== userId) return false
-    if (avatarError) {
-      console.error('アバター更新エラー:', avatarError)
-      // 目標側は書けているので、画面もそこまでは合わせる
-      patch(id, (g) => ({ ...g, goal: input.goal, deadline: input.deadline }))
-      return false
-    }
-
-    patch(id, (g) => ({ ...g, ...input }))
-    return true
   }
 
   /**
@@ -422,6 +437,8 @@ export function useGoalState(userId: string | null) {
    * 作るのをやめて目標一覧から前の目標へ戻れる。
    */
   const newGoal = () => {
+    creation.current = null
+    setSaveError(null)
     setDraft(resetGoal(latest.current))
     setCurrentId(null)
     setHasStarted(false)
@@ -435,6 +452,8 @@ export function useGoalState(userId: string | null) {
     loaded,
     loadError: belongsToUser ? loadError : null,
     retryLoad,
+    saving: belongsToUser && saving,
+    saveError: belongsToUser ? saveError : null,
     hasStarted: belongsToUser && hasStarted,
     hasGoalHistory: belongsToUser && hasGoalHistory,
     start,

@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react'
 import Logo from '../ui/Logo'
+import ServiceInfoLink from '../ui/ServiceInfoLink'
 import type { SignUpResult } from '../state/useAuth'
 
 type Props = {
@@ -8,10 +9,12 @@ type Props = {
   onSignUp: (email: string, password: string) => Promise<SignUpResult>
   onSignInWithGoogle: () => Promise<string | null>
   authError?: string | null
+  onRequestPasswordReset?: (email: string) => Promise<string | null>
+  onResendConfirmation?: (email: string) => Promise<string | null>
 }
 
 /** ログインと新規登録。認証済みのセッションへの遷移は App に任せる。 */
-export default function LoginPage({ onSignIn, onSignUp, onSignInWithGoogle, authError }: Props) {
+export default function LoginPage({ onSignIn, onSignUp, onSignInWithGoogle, authError, onRequestPasswordReset, onResendConfirmation }: Props) {
   const [registering, setRegistering] = useState(false)
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -52,6 +55,32 @@ export default function LoginPage({ onSignIn, onSignUp, onSignInWithGoogle, auth
     setConfirmation('')
     setError(null)
     setNotice(null)
+  }
+
+  const sendEmail = async (kind: 'reset' | 'confirmation') => {
+    if (submitting.current) return
+    if (!email.trim() || !isEmailValid(email.trim())) {
+      setError('有効なメールアドレスを入力してください。')
+      return
+    }
+    const send = kind === 'reset' ? onRequestPasswordReset : onResendConfirmation
+    if (!send) return
+    submitting.current = true
+    setBusy(true)
+    setError(null)
+    setNotice(null)
+    try {
+      const message = await send(email.trim())
+      setError(message)
+      if (!message) setNotice(kind === 'reset'
+        ? '登録済みのメールアドレスの場合、再設定メールを送信しました。メール内のリンクから新しいパスワードを設定してください。'
+        : '確認が必要なアカウントの場合、確認メールを再送しました。迷惑メールもご確認ください。')
+    } catch {
+      setError('通信できませんでした。接続を確認して、もう一度お試しください。')
+    } finally {
+      submitting.current = false
+      setBusy(false)
+    }
   }
 
   const submit = async (e: React.FormEvent) => {
@@ -164,7 +193,25 @@ export default function LoginPage({ onSignIn, onSignUp, onSignInWithGoogle, auth
         <button className="btn ghost login-switch" type="button" onClick={switchMode} disabled={busy}>
           {registering ? 'アカウントをお持ちの方はログイン' : 'アカウントを新規作成'}
         </button>
+        {!registering && onRequestPasswordReset && (
+          <button className="btn ghost login-switch" type="button" onClick={() => sendEmail('reset')} disabled={busy}>
+            パスワードを忘れた方
+          </button>
+        )}
+        {onResendConfirmation && (
+          <button className="btn ghost login-switch login-resend" type="button" onClick={() => sendEmail('confirmation')} disabled={busy}>
+            確認メールを再送する
+          </button>
+        )}
       </form>
+      <p className="service-info"><ServiceInfoLink /></p>
     </div>
   )
+}
+
+function isEmailValid(email: string) {
+  const input = document.createElement('input')
+  input.type = 'email'
+  input.value = email
+  return input.checkValidity()
 }

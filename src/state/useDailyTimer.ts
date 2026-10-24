@@ -15,7 +15,7 @@ type Options = {
 const CONFLICT = '別の端末でタイマーが変更されました。最新の状態を表示しました。もう一度操作してください。'
 
 /** DBを正本にし、画面の時計だけをuseTimerで進める。保存成功後に状態を切り替える。 */
-export function useDailyTimer(onComplete: (day?: string) => void, seconds: number, options: Options) {
+export function useDailyTimer(onComplete: (day?: string) => void | boolean | Promise<void | boolean>, seconds: number, options: Options) {
   const { userId, goalId, local, dayOffset } = options
   const state = useRef<TimerStatus | null>(null)
   const timer = useTimer(() => onComplete(local ? undefined : state.current?.timer_on), seconds)
@@ -29,6 +29,7 @@ export function useDailyTimer(onComplete: (day?: string) => void, seconds: numbe
   const request = useRef(0)
   const loading = useRef(false)
   const changing = useRef(false)
+  const finishing = useRef(false)
   const mounted = useRef(false)
   const [loadedScope, setLoadedScope] = useState<string | null>(null)
   const [ready, setReady] = useState(false)
@@ -56,7 +57,7 @@ export function useDailyTimer(onComplete: (day?: string) => void, seconds: numbe
   }, [timer.restore])
 
   const refresh = useCallback(async () => {
-    if (local || scope === null || goalId === null || loading.current || changing.current) return false
+    if (local || scope === null || goalId === null || loading.current || changing.current || finishing.current) return false
     const id = ++request.current
     loading.current = true
     const started = Date.now()
@@ -81,6 +82,7 @@ export function useDailyTimer(onComplete: (day?: string) => void, seconds: numbe
     ++request.current
     loading.current = false
     changing.current = false
+    finishing.current = false
     state.current = null
     offset.current = 0
     setLoadedScope(null)
@@ -123,7 +125,7 @@ export function useDailyTimer(onComplete: (day?: string) => void, seconds: numbe
   }, [scope, local, refresh])
 
   const change = async (running: boolean) => {
-    if (!ready || loadedScope !== scope || !state.current || changing.current || loading.current) return false
+    if (!ready || loadedScope !== scope || !state.current || changing.current || loading.current || finishing.current) return false
     const row = state.current
     const id = ++request.current
     const started = Date.now()
@@ -157,18 +159,32 @@ export function useDailyTimer(onComplete: (day?: string) => void, seconds: numbe
       if (timer.running) timer.toggle()
       return true
     }
-    if (!ready || loadedScope !== scope || loading.current || changing.current) return false
+    if (!ready || loadedScope !== scope || loading.current || changing.current || finishing.current) return false
     return state.current?.running_since === null ? true : change(false)
   }
 
   const toggle = () => local ? timer.toggle() : change(state.current?.running_since === null)
 
   const finish = async () => {
-    if (local) { timer.finish(); return }
+    if (finishing.current) return
+    if (local) { await timer.finish(); return }
     if (!ready || loadedScope !== scope || changing.current || loading.current) return
     const day = state.current?.timer_on
     // 別端末での一時停止も反映してから、実測時間で達成の可否を確かめる。
-    if (await refresh() && currentScope.current === scope && state.current?.timer_on === day) timer.finish()
+    if (!await refresh() || currentScope.current !== scope || state.current?.timer_on !== day) return
+    finishing.current = true
+    setBusy(true)
+    try {
+      const saved = await timer.finish()
+      if (mounted.current && currentScope.current === scope && saved === false) {
+        setError('記録を保存できませんでした。接続を確認して「記録する」をもう一度押してください。')
+      }
+    } finally {
+      if (mounted.current && currentScope.current === scope) {
+        finishing.current = false
+        setBusy(false)
+      }
+    }
   }
 
   const visible = scope !== null && (local || loadedScope === scope)
@@ -177,7 +193,7 @@ export function useDailyTimer(onComplete: (day?: string) => void, seconds: numbe
     running: visible && timer.running,
     reached: visible && (local || ready) && timer.reached,
     ready: scope === null || local || (loadedScope === scope && ready),
-    busy,
+    busy: busy || timer.saving,
     error,
     toggle,
     finish,

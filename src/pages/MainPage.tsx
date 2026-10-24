@@ -140,9 +140,7 @@ export default function MainPage({
   const timerHint = !timerReady
     ? '接続を確認しています'
     : doneToday
-      ? elapsed >= session
-        ? `${durationText}達成${running ? '後も継続中' : '・一時停止中'}`
-        : '今日の達成は記録ずみ'
+      ? ''
       : reached
         ? '記録すると今日の達成に'
         : `あと${fmtClock(Math.max(0, session - elapsed))}で今日の達成`

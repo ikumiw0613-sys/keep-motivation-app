@@ -104,6 +104,11 @@
   .account-brand{display:flex;align-items:center;gap:10px;font-family:"M PLUS Rounded 1c",var(--font);
     font-size:17px;font-weight:800;color:#3a2a1a;letter-spacing:.04em;white-space:nowrap}
   .account-meta{display:flex;align-items:center;gap:12px;min-width:0}
+  .account-brand-copy{display:flex;flex-direction:column;line-height:1.35}
+  .service-info{text-align:center;font-size:12px;margin:20px 0 0}
+  .service-info-link{color:#4d6557;text-underline-offset:3px}
+  .account-brand .service-info-link{font-family:var(--font);font-size:10px;font-weight:500;letter-spacing:0;min-height:22px;display:inline-flex;align-items:center;align-self:flex-start}
+  .service-info-link:focus-visible{outline:3px solid var(--accent);outline-offset:3px}
   .account-user{display:flex;align-items:center;gap:8px;min-width:0}
   .account-avatar{flex:none;display:grid;place-items:center;width:28px;height:28px;border-radius:50%;
     font-size:13px;font-weight:700;color:#fff;background:linear-gradient(135deg,hsl(var(--h) 55% 52%),hsl(calc(var(--h) - 14) 58% 40%))}
@@ -162,6 +167,7 @@
 
   /* 設定ページの追加ブロック */
   .setup-block{margin-bottom:14px}
+  .setup-fields{border:0;padding:0;margin:0;min-width:0}
   .setup-label em{font-style:normal;color:var(--danger);font-weight:600;font-size:11px;margin-left:4px}
   .setup-input{width:100%;font:inherit;font-size:16px;font-weight:600;letter-spacing:-.01em;color:inherit;
     padding:14px 16px;border:1px solid var(--line);border-radius:13px;background:#fff}

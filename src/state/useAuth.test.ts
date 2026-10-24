@@ -15,6 +15,8 @@ const authApi = vi.hoisted(() => ({
   signUp: vi.fn(),
   signOut: vi.fn(),
   updateUser: vi.fn(),
+  resetPasswordForEmail: vi.fn(),
+  resend: vi.fn(),
 }))
 vi.mock('../lib/supabase', () => ({ supabase: { auth: authApi } }))
 
@@ -96,7 +98,7 @@ describe('account tutorial completion', () => {
     authApi.signUp.mockResolvedValue({ data: { user: user(), session: null }, error: null })
     await render()
     await expect(auth.signUp('new@example.com', 'new-password')).resolves.toEqual({ status: 'confirmation-required' })
-    expect(authApi.signUp).toHaveBeenCalledExactlyOnceWith({ email: 'new@example.com', password: 'new-password' })
+    expect(authApi.signUp).toHaveBeenCalledExactlyOnceWith({ email: 'new@example.com', password: 'new-password', options: { emailRedirectTo: `${window.location.origin}/` } })
     expect(auth.user).toBeNull()
     expect(auth.tutorialCompleted).toBe(false)
   })
@@ -195,6 +197,49 @@ describe('account tutorial completion', () => {
       status: 'error', message: expect.stringContaining('通信できませんでした'),
     })
     await expect(auth.signUp('new@example.com', 'new-password')).resolves.toEqual({ status: 'confirmation-required' })
+  })
+
+  it('sends recovery and confirmation links back to this app', async () => {
+    authApi.resetPasswordForEmail.mockResolvedValue({ error: null })
+    authApi.resend.mockResolvedValue({ error: null })
+    window.history.replaceState(null, '', '/app/?old=1#ignored')
+    await render()
+    await act(async () => { expect(await auth.requestPasswordReset('user@example.com')).toBeNull() })
+    await act(async () => { expect(await auth.resendConfirmation('user@example.com')).toBeNull() })
+    expect(authApi.resetPasswordForEmail).toHaveBeenCalledExactlyOnceWith('user@example.com', {
+      redirectTo: `${window.location.origin}/app/?flow=recovery`,
+    })
+    expect(authApi.resend).toHaveBeenCalledExactlyOnceWith({ type: 'signup', email: 'user@example.com',
+      options: { emailRedirectTo: `${window.location.origin}/app/` } })
+  })
+
+  it('keeps recovery open on a failed update and closes it only after success', async () => {
+    window.history.replaceState(null, '', '/?flow=recovery')
+    authApi.updateUser.mockResolvedValueOnce({ error: { code: 'same_password' } }).mockResolvedValueOnce({ error: null })
+    await render()
+    expect(auth.recovering).toBe(true)
+    await act(async () => { expect(await auth.updatePassword('new-password')).toContain('以前と異なる') })
+    expect(auth.recovering).toBe(true)
+    await act(async () => { expect(await auth.updatePassword('different-password')).toBeNull() })
+    expect(auth.recovering).toBe(false)
+    expect(window.location.search).toBe('')
+    expect(authApi.updateUser.mock.calls[1][0]).toEqual({ password: 'different-password' })
+  })
+
+  it('enters recovery on the SDK event even without the query marker', async () => {
+    await render()
+    await act(async () => onAuthChange('PASSWORD_RECOVERY', { user: user() }))
+    expect(auth.recovering).toBe(true)
+    await act(async () => onAuthChange('SIGNED_OUT', null))
+    expect(auth.recovering).toBe(false)
+  })
+
+  it('reports rate limits and network failures without exposing service details', async () => {
+    authApi.resetPasswordForEmail.mockResolvedValue({ error: { code: 'over_email_send_rate_limit', message: 'secret details' } })
+    authApi.resend.mockRejectedValue(new Error('offline'))
+    await render()
+    await act(async () => { expect(await auth.requestPasswordReset('user@example.com')).toContain('送信回数の上限') })
+    await act(async () => { expect(await auth.resendConfirmation('user@example.com')).toContain('通信できませんでした') })
   })
 
   it('explains that email confirmation is needed before signing in', async () => {

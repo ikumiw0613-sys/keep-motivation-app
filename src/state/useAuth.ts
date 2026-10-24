@@ -15,6 +15,11 @@ import { supabase } from '../lib/supabase'
 /** 何が違うかは言わない。アドレスの存在を当てられるため（AUTH_PLAN 4章） */
 const SIGN_IN_ERROR = 'メールアドレスかパスワードが違います'
 const GOOGLE_SIGN_IN_ERROR = 'Googleでログインできませんでした。もう一度お試しください。'
+const appUrl = () => `${window.location.origin}${window.location.pathname}`
+const emailError = (code?: string) =>
+  code === 'over_email_send_rate_limit' || code === 'over_request_rate_limit'
+    ? '送信回数の上限に達しました。時間をおいて、もう一度お試しください。'
+    : 'メールを送信できませんでした。時間をおいて、もう一度お試しください。'
 
 export type SignUpResult =
   | { status: 'signed-in' }
@@ -26,6 +31,7 @@ export function useAuth() {
   /** セッションの確認が終わったか。これが false の間はログイン画面も出さない */
   const [ready, setReady] = useState(false)
   const [authError, setAuthError] = useState<string | null>(null)
+  const [recovering, setRecovering] = useState(() => new URLSearchParams(window.location.search).get('flow') === 'recovery')
   const tutorialSave = useRef<{ userId: string; promise: Promise<boolean> } | null>(null)
   const currentUserId = useRef<string | null>(null)
   currentUserId.current = user?.id ?? null
@@ -54,9 +60,11 @@ export function useAuth() {
     void restoreSession()
 
     // ログイン・ログアウト・トークン更新をまとめて受ける
-    const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: sub } = supabase.auth.onAuthStateChange((event, session) => {
       if (!alive) return
       setUser(session?.user ?? null)
+      if (event === 'PASSWORD_RECOVERY') setRecovering(true)
+      if (event === 'SIGNED_OUT') setRecovering(false)
       if (session) setAuthError(null)
       setReady(true)
     })
@@ -87,7 +95,7 @@ export function useAuth() {
   const signUp = useCallback(async (email: string, password: string): Promise<SignUpResult> => {
     setAuthError(null)
     try {
-      const { data, error } = await supabase.auth.signUp({ email, password })
+      const { data, error } = await supabase.auth.signUp({ email, password, options: { emailRedirectTo: appUrl() } })
       if (error) {
         let message = '登録を完了できませんでした。入力内容を確認するか、ログインをお試しください。'
         if (error.code === 'signup_disabled' || error.code === 'email_provider_disabled') {
@@ -116,7 +124,7 @@ export function useAuth() {
         provider: 'google',
         options: {
           // クエリやハッシュを持ち越さず、同じアプリへ戻す。
-          redirectTo: `${window.location.origin}${window.location.pathname}`,
+          redirectTo: appUrl(),
         },
       })
       return error ? GOOGLE_SIGN_IN_ERROR : null
@@ -126,8 +134,55 @@ export function useAuth() {
   }, [])
 
   const signOut = useCallback(async () => {
-    await supabase.auth.signOut()
+    const { error } = await supabase.auth.signOut({ scope: 'local' })
+    if (error) setAuthError('ログアウトできませんでした。接続を確認して、もう一度お試しください。')
+    else {
+      setRecovering(false)
+      if (new URLSearchParams(window.location.search).get('flow') === 'recovery') {
+        window.history.replaceState(null, '', window.location.pathname)
+      }
+    }
   }, [])
+
+  const requestPasswordReset = useCallback(async (email: string): Promise<string | null> => {
+    setAuthError(null)
+    try {
+      const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo: `${appUrl()}?flow=recovery` })
+      return error ? emailError(error.code) : null
+    } catch {
+      return '通信できませんでした。接続を確認して、もう一度お試しください。'
+    }
+  }, [])
+
+  const resendConfirmation = useCallback(async (email: string): Promise<string | null> => {
+    setAuthError(null)
+    try {
+      const { error } = await supabase.auth.resend({ type: 'signup', email, options: { emailRedirectTo: appUrl() } })
+      return error ? emailError(error.code) : null
+    } catch {
+      return '通信できませんでした。接続を確認して、もう一度お試しください。'
+    }
+  }, [])
+
+  const updatePassword = useCallback(async (password: string): Promise<string | null> => {
+    if (!user) return 'リンクの有効期限が切れています。再設定メールをもう一度送信してください。'
+    if (password.length < 8) return 'パスワードは8文字以上で入力してください。'
+    const userId = user.id
+    try {
+      const { error } = await supabase.auth.updateUser({ password })
+      if (currentUserId.current !== userId) return 'ログイン状態が変わりました。再設定メールのリンクからやり直してください。'
+      if (error) {
+        return error.code === 'same_password'
+          ? '以前と異なるパスワードを入力してください。'
+          : 'パスワードを変更できませんでした。より長く、推測されにくいパスワードで再試行してください。'
+      }
+      window.history.replaceState(null, '', window.location.pathname)
+      setRecovering(false)
+      return null
+    } catch {
+      return '通信できませんでした。接続を確認して、もう一度お試しください。'
+    }
+  }, [user])
 
   /** 初回案内の完了だけをアカウントに保存する。権限判定には使わない。 */
   const completeTutorial = useCallback((): Promise<boolean> => {
@@ -161,5 +216,6 @@ export function useAuth() {
     return request.promise
   }, [user, tutorialCompleted])
 
-  return { user, ready, authError, signIn, signUp, signInWithGoogle, signOut, tutorialCompleted, completeTutorial }
+  return { user, ready, authError, signIn, signUp, signInWithGoogle, signOut, tutorialCompleted, completeTutorial,
+    recovering, requestPasswordReset, resendConfirmation, updatePassword }
 }

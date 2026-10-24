@@ -11,6 +11,8 @@ let container: HTMLDivElement
 const signIn = vi.fn<(email: string, password: string) => Promise<string | null>>()
 const signUp = vi.fn<(email: string, password: string) => Promise<SignUpResult>>()
 const googleSignIn = vi.fn<() => Promise<string | null>>()
+const passwordReset = vi.fn<(email: string) => Promise<string | null>>()
+const resendConfirmation = vi.fn<(email: string) => Promise<string | null>>()
 
 beforeEach(async () => {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true)
@@ -18,10 +20,13 @@ beforeEach(async () => {
   signIn.mockResolvedValue(null)
   signUp.mockResolvedValue({ status: 'confirmation-required' })
   googleSignIn.mockResolvedValue(null)
+  passwordReset.mockResolvedValue(null)
+  resendConfirmation.mockResolvedValue(null)
   container = document.createElement('div')
   document.body.append(container)
   root = createRoot(container)
-  await act(async () => root.render(createElement(LoginPage, { onSignIn: signIn, onSignUp: signUp, onSignInWithGoogle: googleSignIn })))
+  await act(async () => root.render(createElement(LoginPage, { onSignIn: signIn, onSignUp: signUp, onSignInWithGoogle: googleSignIn,
+    onRequestPasswordReset: passwordReset, onResendConfirmation: resendConfirmation })))
 })
 
 afterEach(async () => {
@@ -61,6 +66,32 @@ it('keeps existing short passwords usable for login', async () => {
   await submit()
   expect(signIn).toHaveBeenCalledExactlyOnceWith('new@example.com', 'short')
   expect(signUp).not.toHaveBeenCalled()
+})
+
+it('requests a password reset with only an email address and blocks duplicate requests', async () => {
+  let resolve!: (message: string | null) => void
+  passwordReset.mockReturnValueOnce(new Promise((done) => { resolve = done }))
+  await fill('login-email', 'new@example.com')
+  const button = Array.from(container.querySelectorAll('button')).find((button) => button.textContent === 'パスワードを忘れた方')!
+  await act(async () => { button.click(); button.click() })
+  expect(passwordReset).toHaveBeenCalledExactlyOnceWith('new@example.com')
+  expect(button.disabled).toBe(true)
+  await act(async () => resolve(null))
+  expect(container.querySelector('[role="status"]')?.textContent).toContain('再設定メール')
+  expect(signIn).not.toHaveBeenCalled()
+})
+
+it('validates the email before resending a confirmation and shows retryable errors', async () => {
+  const button = container.querySelector<HTMLButtonElement>('.login-resend')!
+  await act(async () => button.click())
+  expect(resendConfirmation).not.toHaveBeenCalled()
+  expect(container.querySelector('[role="alert"]')?.textContent).toContain('メールアドレス')
+  await fill('login-email', 'new@example.com')
+  resendConfirmation.mockResolvedValueOnce('時間をおいて再試行してください。')
+  await act(async () => button.click())
+  expect(container.querySelector('[role="alert"]')?.textContent).toContain('再試行')
+  await act(async () => button.click())
+  expect(container.querySelector('[role="status"]')?.textContent).toContain('確認メールを再送')
 })
 
 it.each([false, true])('starts Google login without requiring email credentials (registering = %s)', async (registering) => {

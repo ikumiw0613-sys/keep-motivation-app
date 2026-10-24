@@ -18,7 +18,7 @@ function Harness({ seconds }: { seconds: number }) {
 beforeEach(() => {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true)
   vi.useFakeTimers()
-  onComplete.mockClear()
+  onComplete.mockReset()
   container = document.createElement('div')
   root = createRoot(container)
 })
@@ -229,4 +229,21 @@ it('preserves the paused timer when recording and allows resuming it', async () 
   expect(timer.running).toBe(true)
   await act(async () => timer.finish())
   expect(onComplete).toHaveBeenCalledTimes(1)
+})
+
+it('allows another record attempt after a failed save and blocks clicks during the save', async () => {
+  let resolve!: (saved: boolean) => void
+  onComplete.mockReturnValueOnce(new Promise<boolean>((done) => { resolve = done })).mockResolvedValueOnce(true)
+  await act(async () => root.render(createElement(Harness, { seconds: 5 })))
+  await act(async () => timer.toggle())
+  await tick(5)
+  let operation!: ReturnType<typeof timer.finish>
+  await act(async () => { operation = timer.finish(); void timer.finish() })
+  expect(timer.saving).toBe(true)
+  expect(onComplete).toHaveBeenCalledOnce()
+  await act(async () => { resolve(false); expect(await operation).toBe(false) })
+  expect(timer.saving).toBe(false)
+  await act(async () => { expect(await timer.finish()).toBe(true) })
+  await act(async () => timer.finish())
+  expect(onComplete).toHaveBeenCalledTimes(2)
 })

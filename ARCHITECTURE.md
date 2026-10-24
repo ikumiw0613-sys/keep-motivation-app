@@ -291,9 +291,10 @@ flowchart LR
     G -->|積んだ日| R["records"]
 ```
 
-**DDL の原典は [`supabase/schema.sql`](./supabase/schema.sql) と
-[`supabase/timer_status.sql`](./supabase/timer_status.sql)** です。新しいプロジェクトでは
-この順に実行します。既存プロジェクトには `timer_status.sql` を追加で実行します。
+**DDL の原典は [`supabase/schema.sql`](./supabase/schema.sql)、
+[`supabase/timer_status.sql`](./supabase/timer_status.sql)、
+[`supabase/goal_commands.sql`](./supabase/goal_commands.sql)** です。新しいプロジェクトでは
+この順に実行します。既存プロジェクトには未適用の追加SQLを実行します。
 以下はその要約。
 
 ### `auth.users` — 持ち主（Supabase Auth）
@@ -479,8 +480,10 @@ SQLの検証は [`supabase/tests/timer_status.sql`](./supabase/tests/timer_statu
   変わるため、「過去を切り直さずに変える」には変更履歴のテーブルが要ります。いまは
   「変えたいなら新しい目標＝たまごから」。**1日に1回にした人の逃げ道が作り直しだけ**なのが
   未解決の宿題です
-- 目標作成は `goals` → `avatars` の2回の INSERT で、**トランザクションではありません。**
-  片方だけ成功する余地が残っています（失敗時は Console にエラー）。
+- 目標の作成・修正は `goal_commands.sql` のRPCでアバターと同時に保存します。
+  本人のRLSを適用する `SECURITY INVOKER` で実行し、途中失敗は全体を取り消します。
+  作成の `request_id` はアカウント内で一意なので、応答が失われた後の同じ操作の再送も重複しません。
+  画面は保存中の送信を止め、失敗時は入力を残して再試行を案内します。
   `goals` だけ入ると、アバターの無い目標が目標一覧に並びます
 - **目標は増える一方で、古いものを片付ける導線がありません。** 作るたびに `goals` が
   1行ずつ積まれ、**全部が目標一覧に並び続けます**。並行に持てるようになったぶん、

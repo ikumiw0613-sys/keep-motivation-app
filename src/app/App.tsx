@@ -1,4 +1,5 @@
 import LoginPage from '../pages/LoginPage'
+import PasswordResetPage from '../pages/PasswordResetPage'
 import MainPage from '../pages/MainPage'
 import SetupPage from '../pages/SetupPage'
 import AccountBar from './AccountBar'
@@ -12,7 +13,8 @@ const DebugPage = import.meta.env.DEV
 
 export default function App() {
   const [tutorialUserId, setTutorialUserId] = useState<string | null>(null)
-  const { user, ready, authError, signIn, signUp, signInWithGoogle, signOut, state, goals, currentGoalId, selectGoal, setDayOffset, reload, loaded, loadError, retryLoad, hasStarted, completeTutorial, screen, start, extendDeadline, markStageSeen, newGoal, cancelNewGoal, editGoal, saveGoal, cancelEdit, session, elapsed, running, reached, toggleTimer, finishTimer, recordOnly, timerReady, timerBusy, timerError, retryTimer } = useApp()
+  const app = useApp()
+  const { user, ready, authError, signIn, signUp, signInWithGoogle, signOut, state, goals, currentGoalId, selectGoal, setDayOffset, reload, loaded, loadError, retryLoad, hasStarted, completeTutorial, screen, start, extendDeadline, markStageSeen, newGoal, cancelNewGoal, editGoal, saveGoal, cancelEdit, session, elapsed, running, reached, toggleTimer, finishTimer, recordOnly, timerReady, timerBusy, timerError, retryTimer } = app
 
   // ゲートは3段。セッションの確認 → ログイン → 目標の読み込み（AUTH_PLAN 4章）
   if (!ready) {
@@ -20,8 +22,11 @@ export default function App() {
   }
 
   if (!user) {
-    return <LoginPage onSignIn={signIn} onSignUp={signUp} onSignInWithGoogle={signInWithGoogle} authError={authError} />
+    return <LoginPage onSignIn={signIn} onSignUp={signUp} onSignInWithGoogle={signInWithGoogle} authError={authError}
+      onRequestPasswordReset={app.requestPasswordReset} onResendConfirmation={app.resendConfirmation} />
   }
+
+  if (app.recovering) return <PasswordResetPage onSave={app.updatePassword} onSignOut={signOut} />
 
   if (loadError) {
     return (
@@ -41,6 +46,7 @@ export default function App() {
     <div className={`shell${tutorialUserId === user.id ? '' : screen === 'main' ? ' dashboard-shell' : screen === 'setup' || screen === 'edit' ? ' setup-shell' : ''}`}>
       <AccountBar email={user.email ?? ''} onSignOut={() => { setTutorialUserId(null); void signOut() }}
         onShowTutorial={screen !== 'top' && tutorialUserId !== user.id ? () => setTutorialUserId(user.id) : undefined} />
+      {authError && <p className="login-error" role="alert">{authError}</p>}
       {tutorialUserId === user.id && (
         <main className="content tutorial-content">
           <button type="button" className="btn ghost" onClick={() => setTutorialUserId(null)}>元の画面に戻る</button>
@@ -59,9 +65,9 @@ export default function App() {
         ) : screen === 'top' ? (
           <TopPage onStart={completeTutorial} />
         ) : screen === 'setup' ? (
-          <SetupPage key="setup" state={state} onStart={start} onBack={cancelNewGoal} />
+          <SetupPage key="setup" state={state} onStart={start} onBack={cancelNewGoal} saving={app.savingGoal} saveError={app.goalSaveError} />
         ) : screen === 'edit' ? (
-          <SetupPage key="edit" state={state} onStart={saveGoal} onBack={cancelEdit} editing />
+          <SetupPage key="edit" state={state} onStart={saveGoal} onBack={cancelEdit} editing saving={app.savingGoal} saveError={app.goalSaveError} />
         ) : (
           <MainPage
             state={state}

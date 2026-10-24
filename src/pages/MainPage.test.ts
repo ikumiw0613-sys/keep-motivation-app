@@ -144,7 +144,7 @@ it('continues measuring after recording and offers pause and resume controls', a
   await act(async () => vi.advanceTimersByTime(6000))
   await clickButton('記録する')
   expect(container.querySelector('.timer-state')?.textContent).toBe('今日の目標達成')
-  expect(container.querySelector('.timer-hint')?.textContent).toBe('5秒達成後も継続中')
+  expect(container.querySelector('.timer-hint')?.textContent).toBe('')
   expect(container.querySelector('.clock')?.textContent).toBe('0:06')
   expect(container.querySelector('.stage-toggler.finish')).toBeNull()
 
@@ -162,7 +162,7 @@ it('can start a new timer on a recorded day and displays the actual elapsed time
   vi.useFakeTimers()
   await act(async () => root.render(createElement(TimerHarness, { recorded: true })))
   expect(container.querySelector('.clock')?.textContent).toBe('0:00')
-  expect(container.querySelector('.timer-hint')?.textContent).toBe('今日の達成は記録ずみ')
+  expect(container.querySelector('.timer-hint')?.textContent).toBe('')
   await clickButton('再開')
   await act(async () => vi.advanceTimersByTime(2000))
   await clickButton('一時停止')
@@ -197,7 +197,6 @@ it.each([true, false])('shows achieved time with a truthful running state (runni
   await renderDashboard({ state, elapsed: 319, reached: true, running })
   expect(container.querySelector('.clock')?.textContent).toBe('5:19')
   expect(container.querySelector('.timer-state')?.textContent).toBe('今日の目標達成')
-  expect(container.querySelector('.timer-hint')?.textContent).toBe(running ? '5分達成後も継続中' : '5分達成・一時停止中')
   expect(container.querySelector('.stage-toggler')?.textContent).toBe(running ? '一時停止' : '再開')
 })
 

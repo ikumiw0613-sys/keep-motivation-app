@@ -17,10 +17,13 @@ export type TimerSnapshot = {
  * デバッグ画面は5秒を渡す（useApp）。デバッグ画面で5秒回して確かめたことは、
  * 本番の5分でもそのまま起きる。
  */
-export function useTimer(onComplete: () => void, seconds: number) {
+export function useTimer(onComplete: () => void | boolean | Promise<void | boolean>, seconds: number) {
   const [elapsed, setElapsed] = useState(0)
   const [running, setRunning] = useState(false)
   const recordedRef = useRef(false)
+  const savingRef = useRef<object | null>(null)
+  const generation = useRef(0)
+  const [saving, setSaving] = useState(false)
   const accumulatedMsRef = useRef(0)
   const startedAtRef = useRef<number | null>(null)
   const endsAtRef = useRef<number>(Infinity)
@@ -55,12 +58,26 @@ export function useTimer(onComplete: () => void, seconds: number) {
   const reached = elapsed >= seconds
 
   /** 達成を記録する。計測はそのまま続け、重複して記録しない */
-  const finish = () => {
-    if (recordedRef.current) return
+  const finish = async () => {
+    if (recordedRef.current || savingRef.current) return
     const elapsedMs = syncElapsed()
     if (elapsedMs < seconds * 1000) return
-    recordedRef.current = true
-    onCompleteRef.current()
+    const operation = {}
+    const version = generation.current
+    savingRef.current = operation
+    setSaving(true)
+    try {
+      const result = await onCompleteRef.current()
+      if (result !== false && generation.current === version) recordedRef.current = true
+      return result !== false
+    } catch {
+      return false
+    } finally {
+      if (savingRef.current === operation) {
+        savingRef.current = null
+        setSaving(false)
+      }
+    }
   }
 
   /** 記録後も一時停止・再開できる */
@@ -78,6 +95,9 @@ export function useTimer(onComplete: () => void, seconds: number) {
 
   /** 保存済みの時刻から復元する。通信処理は保存担当のhookが持つ。 */
   const restore = useCallback((snapshot: TimerSnapshot, recorded = false) => {
+    generation.current += 1
+    savingRef.current = null
+    setSaving(false)
     accumulatedMsRef.current = snapshot.accumulatedMs
     startedAtRef.current = snapshot.startedAt
     endsAtRef.current = snapshot.endsAt ?? Infinity
@@ -97,5 +117,5 @@ export function useTimer(onComplete: () => void, seconds: number) {
     recordedRef.current = true
   }
 
-  return { elapsed, running, reached, toggle, finish, reset, complete, restore }
+  return { elapsed, running, reached, saving, toggle, finish, reset, complete, restore }
 }

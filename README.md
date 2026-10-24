@@ -150,7 +150,8 @@ cp .env.example .env       # ← 中身を埋める（下記）
 > **DB を新しいプロジェクトへ移しました。** テーブルの定義は
 > [`supabase/schema.sql`](./supabase/schema.sql) が原典です。新しい Supabase
 > プロジェクトを作ったら、SQL Editor にこのファイルを貼って1回実行し、続いて
-> [`supabase/timer_status.sql`](./supabase/timer_status.sql) を実行してください。
+> [`supabase/timer_status.sql`](./supabase/timer_status.sql)、
+> [`supabase/goal_commands.sql`](./supabase/goal_commands.sql) の順に実行してください。
 > その後、
 > `.env` の2つの値を新しいプロジェクトのものへ差し替えてください
 > （**旧プロジェクトは消しません。** しばらく様子を見てから休止します）。
@@ -248,6 +249,7 @@ Googleログインのためにフロントエンドへ追加する環境変数�
 | 進化の条件（何サイクルで上がるか） | `src/avatar/stage.ts` |
 | テーブル定義 | `supabase/schema.sql` |
 | タイマーの保存先・更新用関数 | `supabase/timer_status.sql` |
+| 目標・アバターの一括保存と再送時の重複防止 | `supabase/goal_commands.sql` |
 | デバッグ画面の中身 | `src/pages/DebugPage.tsx`（消す処理は `src/state/debug.ts`） |
 
 `src/` 全体のツリーと、どのファイルがどれを呼ぶかの図は

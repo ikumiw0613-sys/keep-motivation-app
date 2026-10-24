@@ -1,4 +1,5 @@
 import Logo from '../ui/Logo'
+import ServiceInfoLink from '../ui/ServiceInfoLink'
 
 type Props = {
   email: string
@@ -11,7 +12,7 @@ export default function AccountBar({ email, onSignOut, onShowTutorial }: Props) 
     <div className="account-bar" role="group" aria-label="アカウント">
       <div className="account-brand">
         <Logo width={30} />
-        <span>がんばり畑</span>
+        <div className="account-brand-copy"><span>がんばり畑</span><ServiceInfoLink compact /></div>
       </div>
       <div className="account-meta">
         {onShowTutorial && (
