@@ -475,7 +475,7 @@ SQLの検証は [`supabase/tests/timer_status.sql`](./supabase/tests/timer_statu
 
 **データまわり**
 
-- パスワード再発行の導線はありません。
+- パスワード再設定・確認メール再送はログイン画面から利用できます。公開URLの許可とSMTP設定は運用側で行います。
 - **ペース（`cycle_days`）はあとから変えられません。** 変えると過去の記録の所属サイクルが
   変わるため、「過去を切り直さずに変える」には変更履歴のテーブルが要ります。いまは
   「変えたいなら新しい目標＝たまごから」。**1日に1回にした人の逃げ道が作り直しだけ**なのが
@@ -484,7 +484,6 @@ SQLの検証は [`supabase/tests/timer_status.sql`](./supabase/tests/timer_statu
   本人のRLSを適用する `SECURITY INVOKER` で実行し、途中失敗は全体を取り消します。
   作成の `request_id` はアカウント内で一意なので、応答が失われた後の同じ操作の再送も重複しません。
   画面は保存中の送信を止め、失敗時は入力を残して再試行を案内します。
-  `goals` だけ入ると、アバターの無い目標が目標一覧に並びます
 - **目標は増える一方で、古いものを片付ける導線がありません。** 作るたびに `goals` が
   1行ずつ積まれ、**全部が目標一覧に並び続けます**。並行に持てるようになったぶん、
   終わった目標を畳む導線（並べ替え・非表示）が要るのはこれからの宿題です
@@ -532,18 +531,14 @@ Cloud Run は**常駐するサーバープロセス**を動かす場所です。
 **Cloud Run が要るのは**、Supabase では書けない処理（外部APIの鍵を隠して叩く、重いバッチ、
 定期通知）が出てきた時です。その多くは Supabase Edge Functions で足ります。**今は入れない。**
 
-### 公開の手順（着手時）
+### 公開先：Vercel
 
-- [ ] RLS（行レベルセキュリティ）を有効にする ← **他人のデータが読めてしまう事故を防ぐ。必須**
-- [ ] `npm i -g firebase-tools` → `firebase login` → `firebase init hosting`
-      （公開ディレクトリは `dist`、SPA 設定は「Yes」）
-- [ ] `npm run build && firebase deploy` で公開できることを確認
-- [ ] GitHub Actions で main マージ時に自動デプロイ（余裕が出てから）
+`vercel.json` でVite、`npm ci`、`npm run build`、出力先 `dist` を指定します。
+Node.jsは `package.json` の `engines` で22.xを指定します。
+静的ファイルの配信とSPAのフォールバックをVercelが担当し、認証とDBはSupabaseに接続します。
 
-> anon key はブラウザに露出する前提の鍵なので、漏れても RLS があれば守られます。
-> **逆に言うと RLS が無いと全データが読み書きされます**（5章の1つ目の課題）。
-> 1つ目のチェックを飛ばさないこと。
+公開手順と環境変数、Supabaseの戻り先設定は [VERCEL_DEPLOY.md](./VERCEL_DEPLOY.md)、
+公開前の確認は [RELEASE_CHECKLIST.md](./RELEASE_CHECKLIST.md) を参照してください。
 
-Firebase Hosting を選ぶ理由は、無料枠・CDN・HTTPS 自動・カスタムドメインが揃っていて
-Google アカウントで完結するためです。Vercel / Cloudflare Pages / GitHub Pages でも問題なく、
-**乗り換えは後からでも数十分でできます。**
+公開用キーはブラウザへ配信されるため、本人以外のデータを読めない・書けないことはDBのRLSで保証します。
+接続先ではRLSと所有者ポリシーを設定済みです。別プロジェクトへ切り替える場合も、この設定を確認します。

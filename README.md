@@ -10,6 +10,7 @@
 | 分担・タスク・Git・相談のルール | [TEAM.md](./TEAM.md) |
 | アバター（3Dのひよこ）の触り方 | [src/avatar/README.md](./src/avatar/README.md) |
 | **2026年9月に何がどう変わったか**（以前 → いま） | [CHANGES_EVOLUTION.md](./CHANGES_EVOLUTION.md) |
+| Vercelで公開する手順・設定値 | [VERCEL_DEPLOY.md](./VERCEL_DEPLOY.md) |
 
 ---
 
@@ -129,7 +130,7 @@ DB に置く導出値はありません（唯一の例外は「進化の演出�
 
 ### 初回だけ
 
-**Node.js v20 以上**（推奨 v22 / v24）が必要です。
+**Node.js v22** を使用します。Vercelのビルドも22.xに揃えています。
 
 ```bash
 node -v && npm -v          # command not found なら nodejs.org の LTS を入れる

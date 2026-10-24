@@ -4,6 +4,7 @@ dist/
 dist-ssr/
 *.tsbuildinfo
 .vite/
+.vercel/
 .playwright-mcp/
 *.tar
 

@@ -11,6 +11,8 @@
 
 ## 公開先で行う確認
 
+公開先はVercelです。設定値と操作手順は [VERCEL_DEPLOY.md](./VERCEL_DEPLOY.md) を参照してください。
+
 - [ ] 本番ビルドの `VITE_SUPABASE_URL` と公開用キーが意図したプロジェクトを指す。
 - [ ] 新規DBには `schema.sql` → `timer_status.sql` → `goal_commands.sql` を適用する。
 - [ ] Supabase Auth の Site URL を公開URLにし、Redirect URLs に公開アプリのURLと
